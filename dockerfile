@@ -2,7 +2,7 @@
 FROM node:18
 
 
-ENV PORT=3307
+ENV PORT=3000
 
 
 WORKDIR /app
