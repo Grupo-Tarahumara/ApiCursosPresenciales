@@ -10,7 +10,7 @@ const port = 80;
 const db = mysql.createConnection({
   host: '192.168.29.40',
   user: 'bn_moodle',
-  password: 'moodlePassword',
+  password: '',
   database: 'bitnami_moodle',
   port: '3306'  
 });
