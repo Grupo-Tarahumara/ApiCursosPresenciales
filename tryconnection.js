@@ -2,7 +2,7 @@ const express = require('express');
 const mysql = require('mysql');
 const cors = require('cors');
 const app = express();
-const port = 6001;
+const port = 6002;
 
 
 //dates to do a connection
