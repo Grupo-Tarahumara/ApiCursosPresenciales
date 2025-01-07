@@ -2,17 +2,18 @@ const express = require('express');
 const mysql = require('mysql');
 const cors = require('cors');
 const app = express();
-const port = 3307;
+const port = 3001;
 
 //dates to do a connection
 
 const db = mysql.createConnection({
-  host: '192.168.32.6',
-  user: 'rauf',
-  password: '',
-  database: 'moodle',
-  port: '3307'
+  host: '192.168.29.40',
+  user: 'bn_moodle',
+  password: 'moodlePassword',
+  database: 'bitnami_moodle',
+  port: '3306'  
 });
+
 
 //connection database
 db.connect(err => {
@@ -27,42 +28,32 @@ db.connect(err => {
 // course assigned , completed  
 app.use(cors());
 app.get('/courses', (req, res) => {
-  const sql = `SELECT DISTINCT
-  c.id AS course_id,
-  c.fullname AS course_name,
-  c.shortname AS course_shortname,
-  CONCAT(u.firstname, ' ', u.lastname) AS user_name,
-  r.shortname AS role_name,
-  CASE 
-      WHEN ue.id IS NOT NULL THEN 
-          CASE 
-              WHEN r.shortname = 'student' THEN 'Completed'
-              ELSE 'Enrolled'
-          END
-      ELSE 'Assigned Only'
-  END AS enrollment_status,
-  FROM_UNIXTIME(c.startdate, '%Y-%m-%d') AS start_date,
-  FROM_UNIXTIME(c.enddate, '%Y-%m-%d') AS end_date
-FROM 
-  mdl_course c
-LEFT JOIN 
-  mdl_context ctx ON ctx.instanceid = c.id AND ctx.contextlevel = 50
-LEFT JOIN 
-  mdl_role_assignments ra ON ra.contextid = ctx.id
-LEFT JOIN 
-  mdl_role r ON ra.roleid = r.id
-LEFT JOIN 
-  mdl_user u ON ra.userid = u.id
-LEFT JOIN 
-  mdl_enrol e ON e.courseid = c.id
-LEFT JOIN 
-  mdl_user_enrolments ue ON ue.enrolid = e.id AND ue.userid = u.id
-WHERE 
-  u.id = 2 -- Reemplaza "2" con tu ID de usuario
-GROUP BY 
-  c.id, u.id, r.shortname
-ORDER BY 
-  course_name;`;
+  const sql = `
+  SELECT
+    c.id AS course_id,
+    c.fullname AS course_name,
+    c.summary AS course_description,
+    CONCAT(u.firstname, ' ', u.lastname) AS teacher_name,
+    FROM_UNIXTIME(c.startdate, '%Y-%m-%d') AS start_date,
+    FROM_UNIXTIME(c.enddate, '%Y-%m-%d') AS end_date,
+    cat.name AS course_category -- Agregamos la categoría del curso (área/departamento)
+FROM
+    mdl_course c
+LEFT JOIN
+    mdl_context ctx ON ctx.instanceid = c.id AND ctx.contextlevel = 50
+LEFT JOIN
+    mdl_role_assignments ra ON ra.contextid = ctx.id
+LEFT JOIN
+    mdl_role r ON ra.roleid = r.id
+LEFT JOIN
+    mdl_user u ON ra.userid = u.id
+LEFT JOIN
+    mdl_course_categories cat ON cat.id = c.category -- Se une con la tabla de categorías
+WHERE
+    r.shortname = 'editingteacher' -- Solo se considera a los profesores editores
+ORDER BY
+    course_name;
+`;
 
   db.query(sql, (err, results) => {
     if (err) {
@@ -78,7 +69,7 @@ ORDER BY
 
 app.get('/allCourses',(req,res)=>{
 
-  const query=`SELECT * FROM mdl_course`
+  const query=`SELECT * FROM bitnami_moodle.mdl_adminpresets;`
 
   try{
 
@@ -100,7 +91,11 @@ app.get('/allCourses',(req,res)=>{
 
 })
 
-//course api users 
+app.get('/', (req, res) => {
+  console.log("hola"); // Logs "hola" to the server console
+  res.send("hola"); // Sends "hola" to the browser
+});
+
 
 
 //open port 
