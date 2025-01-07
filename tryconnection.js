@@ -11,7 +11,7 @@ const db = mysql.createConnection({
   user: 'rauf',
   password: '',
   database: 'moodle',
-  port: '3307'
+  port: '3307'  
 });
 
 //connection database
@@ -97,6 +97,12 @@ app.get('/allCourses',(req,res)=>{
     console.log(e)
   }
 
+
+})
+
+app.get('/hola',(res,req)=>{
+
+  console.log("hola")
 
 })
 
