@@ -2,12 +2,12 @@ const express = require('express');
 const mysql = require('mysql');
 const cors = require('cors');
 const app = express();
-const port = 3308;
+const port = 6001;
 
 //dates to do a connection
 
 const db = mysql.createConnection({
-  host: '20.1.166.122',
+  host: '192.168.29.40',
   user: 'bn_moodle',
   password: 'moodlePassword',
   database: 'bitnami_moodle',
