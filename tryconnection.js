@@ -79,7 +79,7 @@ ORDER BY
 
 app.get('/allCourses',(req,res)=>{
 
-  const query=`SELECT * FROM julio`
+  const query=`SELECT * FROM bitnami_moodle.mdl_adminpresets;`
 
   try{
 
