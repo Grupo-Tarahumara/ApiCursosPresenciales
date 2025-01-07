@@ -7,12 +7,13 @@ const port = 3308;
 //dates to do a connection
 
 const db = mysql.createConnection({
-  host: 'localhost',
+  host: '192.168.36.194',
   user: 'rauf',
   password: '123',
   database: 'moodle',
   port: '3307'  
 });
+
 
 //connection database
 db.connect(err => {
