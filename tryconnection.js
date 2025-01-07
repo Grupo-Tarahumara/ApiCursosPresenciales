@@ -100,13 +100,11 @@ app.get('/allCourses',(req,res)=>{
 
 })
 
-app.get('/hola',(res,req)=>{
+app.get('/hola', (req, res) => {
+  console.log("hola"); // Logs "hola" to the server console
+  res.send("hola"); // Sends "hola" to the browser
+});
 
-  console.log("hola")
-
-})
-
-//course api users 
 
 
 //open port 
