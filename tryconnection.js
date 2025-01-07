@@ -2,14 +2,14 @@ const express = require('express');
 const mysql = require('mysql');
 const cors = require('cors');
 const app = express();
-const port = 3307;
+const port = 3308;
 
 //dates to do a connection
 
 const db = mysql.createConnection({
-  host: '192.168.32.6',
+  host: 'localhost',
   user: 'rauf',
-  password: '',
+  password: '123',
   database: 'moodle',
   port: '3307'  
 });
@@ -78,7 +78,7 @@ ORDER BY
 
 app.get('/allCourses',(req,res)=>{
 
-  const query=`SELECT * FROM mdl_course`
+  const query=`SELECT * FROM julio`
 
   try{
 
