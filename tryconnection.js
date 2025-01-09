@@ -55,6 +55,7 @@ ORDER BY
     course_name;
 `;
 
+
   db.query(sql, (err, results) => {
     if (err) {
       res.status(500).send('Error fetching data');
@@ -65,6 +66,23 @@ ORDER BY
     // console.log(results)
   });
 });
+
+
+app.get('/cursospresenciales', (req, res) => {
+  const query = `
+    select mdl_user.id,cursos_presenciales.title,mdl_user.firstname from bitnami_moodle.mdl_user 
+inner join bitnami_moodle.usuario_curso on bitnami_moodle.mdl_user.id = bitnami_moodle.usuario_curso.id_usuario
+inner join bitnami_moodle.cursos_presenciales on bitnami_moodle.cursos_presenciales.id_course = bitnami_moodle.usuario_curso.id_course
+  `;
+  db.query(query, (err, results) => {
+    if (err) {
+      res.status(500).send('Error fetching data');
+      return;
+    }
+    res.json(results);
+  });
+});
+
 
 
 app.get('/allCourses',(req,res)=>{
