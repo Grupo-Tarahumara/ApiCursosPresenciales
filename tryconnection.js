@@ -3,6 +3,7 @@ const mysql = require('mysql');
 const cors = require('cors');
 const app = express();
 const port = 3001;
+app.use(express.json())
 
 //dates to do a connection
 
@@ -110,6 +111,31 @@ app.get('/', (req, res) => {
   res.send("hola"); // Sends "hola" to the browser
 });
 
+
+app.post('/agregarCurso', (req, res) => {
+  
+  const { title, description, area, tutor } = req.body;
+ 
+  // Verifica si los datos se están recibiendo correctamente
+  console.log("Datos recibidos:", req.body);
+ 
+  const query = `INSERT INTO bitnami_moodle.cursos_presenciales (title, description, area, tutor)
+                 VALUES ('${title}', '${description}', '${area}', '${tutor}')`;
+ 
+  try {
+    db.query(query, (err, result) => {
+      if (err) {
+        console.error("Error al insertar el curso:", err);
+        res.status(500).send('Error en la base de datos');
+      } else {
+        res.json(result); // Devuelve el resultado si la inserción fue exitosa
+      }
+    });
+  } catch (e) {
+    console.error("Error en el servidor:", e);
+    res.status(500).send('Error en el servidor');
+  }
+});
 
 
 //open port 
