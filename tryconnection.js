@@ -16,6 +16,7 @@ const db = mysql.createConnection({
 });
 
 
+
 //connection database
 db.connect(err => {
   if (err) {
@@ -70,7 +71,7 @@ ORDER BY
 
 
 app.get('/cursospresenciales', (req, res) => {
-  const query=`SELECT id_course as id, title as course_name, description as course_description, area as course_category, tutor as teacher_name FROM cursosPresenciales.usuario_curso`;
+  const query=`SELECT * FROM cursosPresenciales.cursos_presenciales;`;
   db.query(query, (err, results) => {
     if (err) {
       res.status(500).send('Error fetching data');
