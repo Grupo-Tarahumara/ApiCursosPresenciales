@@ -11,7 +11,7 @@ const db = mysql.createConnection({
   host: '192.168.29.40',
   user: 'root',
   password: 'C0L1s3um.t4r4',
-  database: 'ActaDescarga',
+  database: 'cursosPresenciales',
   port: '3010'  
 });
 
@@ -72,6 +72,18 @@ ORDER BY
 
 app.get('/cursospresenciales', (req, res) => {
   const query=`SELECT * FROM cursosPresenciales.cursos_presenciales;`;
+  db.query(query, (err, results) => {
+    if (err) {
+      res.status(500).send('Error fetching data');
+      return;
+    }
+    res.json(results);
+  });
+});
+
+
+app.get('/cursostomados', (req, res) => {
+  const query=`SELECT * FROM cursos_presenciales inner join usuario_curso on  usuario_curso.id_course= cursos_presenciales.id_course;`;
   db.query(query, (err, results) => {
     if (err) {
       res.status(500).send('Error fetching data');
