@@ -1,5 +1,5 @@
 const express = require('express');
-const mysql = require('mysql');
+const mysql = require('mysql2');
 const cors = require('cors');
 const app = express();
 const port = 3001;
@@ -9,10 +9,10 @@ app.use(express.json())
 
 const db = mysql.createConnection({
   host: '192.168.29.40',
-  user: 'bn_moodle',
-  password: 'moodlePassword',
-  database: 'bitnami_moodle',
-  port: '3306'  
+  user: 'root',
+  password: 'C0L1s3um.t4r4',
+  database: 'ActaDescarga',
+  port: '3010'  
 });
 
 
@@ -70,7 +70,7 @@ ORDER BY
 
 
 app.get('/cursospresenciales', (req, res) => {
-  const query=`SELECT id_course as id, title as course_name, description as course_description, area as course_category, tutor as teacher_name FROM bitnami_moodle.cursos_presenciales`;
+  const query=`SELECT id_course as id, title as course_name, description as course_description, area as course_category, tutor as teacher_name FROM cursosPresenciales.usuario_curso`;
   db.query(query, (err, results) => {
     if (err) {
       res.status(500).send('Error fetching data');
