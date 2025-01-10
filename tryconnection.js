@@ -132,7 +132,7 @@ app.post('/agregarCurso', (req, res) => {
   // Verifica si los datos se están recibiendo correctamente
   console.log("Datos recibidos:", req.body);
  
-  const query = `INSERT INTO bitnami_moodle.cursos_presenciales (title, description, area, tutor)
+  const query = `INSERT INTO cursos_presenciales (title, description, area, tutor)
                  VALUES ('${title}', '${description}', '${area}', '${tutor}')`;
  
   try {
