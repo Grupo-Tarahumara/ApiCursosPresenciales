@@ -151,6 +151,34 @@ app.post('/agregarCurso', (req, res) => {
 });
 
 
+app.post('/agregarCursoTomado',(req,res)=>{
+
+  const { id_usuario,id_course } = req.body;
+ 
+
+  console.log("Datos recibidos:", req.body);
+ 
+  const query = `INSERT INTO usuario_curso (id_usuario, id_course) VALUES ('${id_usuario} ','${id_course} ')`;
+  try{
+  db.query(query, (err, result) => {
+    if (err) {
+      console.error("Error al insertar el curso:", err);
+      res.status(500).send('Error en la base de datos');
+    } else {
+      console.log("Curso agregado con éxito:", result);
+      res.json(result);
+    }
+  });
+  }catch(e){
+
+    console.log(e)
+  }
+
+
+  
+
+})
+
 //open port 
 app.listen(port, () => {
   console.log(`API running at http://localhost:${port}`);
