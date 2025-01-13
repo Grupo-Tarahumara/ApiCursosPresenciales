@@ -31,8 +31,6 @@ db.on('error', (err) => {
   }
 });
 
-
-
 //connection database
 db.connect(err => {
   if (err) {
@@ -101,6 +99,18 @@ app.post('/agregarUsuario', (req, res) => {
     res.status(500).send('Error en el servidor');
   }
 } );
+
+app.get('/usuarios', (req, res) => {
+  const query = `SELECT * FROM users`;
+ 
+  db.query(query, (err, results) => {
+    if (err) {
+      res.status(500).send('Error fetching data');
+      return;
+    }
+    res.json(results);
+  });
+});
 
 
 app.post('/agregarCurso', (req, res) => {
