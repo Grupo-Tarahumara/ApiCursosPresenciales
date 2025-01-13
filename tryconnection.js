@@ -7,12 +7,28 @@ app.use(express.json())
 
 //dates to do a connection
 
-const db = mysql.createConnection({
-  host: '192.168.29.40',
-  user: 'root',
-  password: 'C0L1s3um.t4r4',
-  database: 'cursosPresenciales',
-  port: '3010'  
+const returnConnection=() =>{
+
+   return mysql.createConnection({
+      host: '192.168.29.40',
+      user: 'root',
+      password: 'C0L1s3um.t4r4',
+      database: 'cursosPresenciales',
+      port: '3010'  
+});
+}
+
+var db =returnConnection()
+
+db.on('error', (err) => {
+  console.error('Error con la base de datos:', err);
+ 
+  if (err.code === 'PROTOCOL_CONNECTION_LOST' || err.code === 'ECONNREFUSED') {
+    console.log('Conexión perdida, intentando reconectar...');
+    db =returnConnection(); // Reconectar
+  } else {
+    throw err; // Si es otro tipo de error, lanzar el error
+  }
 });
 
 
