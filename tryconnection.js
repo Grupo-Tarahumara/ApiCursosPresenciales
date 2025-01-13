@@ -45,45 +45,7 @@ db.connect(err => {
 
 // course assigned , completed  
 app.use(cors());
-app.get('/courses', (req, res) => {
-  const sql = `
-  SELECT
-    c.id AS course_id,
-    c.fullname AS course_name,
-    c.summary AS course_description,
-    CONCAT(u.firstname, ' ', u.lastname) AS teacher_name,
-    FROM_UNIXTIME(c.startdate, '%Y-%m-%d') AS start_date,
-    FROM_UNIXTIME(c.enddate, '%Y-%m-%d') AS end_date,
-    cat.name AS course_category -- Agregamos la categoría del curso (área/departamento)
-FROM
-    mdl_course c
-LEFT JOIN
-    mdl_context ctx ON ctx.instanceid = c.id AND ctx.contextlevel = 50
-LEFT JOIN
-    mdl_role_assignments ra ON ra.contextid = ctx.id
-LEFT JOIN
-    mdl_role r ON ra.roleid = r.id
-LEFT JOIN
-    mdl_user u ON ra.userid = u.id
-LEFT JOIN
-    mdl_course_categories cat ON cat.id = c.category -- Se une con la tabla de categorías
-WHERE
-    r.shortname = 'editingteacher' -- Solo se considera a los profesores editores
-ORDER BY
-    course_name;
-`;
 
-
-  db.query(sql, (err, results) => {
-    if (err) {
-      res.status(500).send('Error fetching data');
-      return;
-    }
-    res.json(results);
-
-    // console.log(results)
-  });
-});
 
 
 app.get('/cursospresenciales', (req, res) => {
@@ -110,35 +72,35 @@ app.get('/cursostomados', (req, res) => {
 });
 
 
-
-app.get('/allCourses',(req,res)=>{
-
-  const query=`SELECT * FROM bitnami_moodle.mdl_adminpresets;`
-
-  try{
-
-    db.query(query,(err,result)=>{
-      if(err){
-        res.status(500).send('error')
-      }else{
-        res.json(result)
-      }
-
-    })
-
-  }catch(e){
-
-
-    console.log(e)
-  }
-
-
-})
-
 app.get('/', (req, res) => {
   console.log("hola"); // Logs "hola" to the server console
   res.send("hola"); // Sends "hola" to the browser
 });
+
+app.post('/agregarUsuario', (req, res) => {
+  
+  const { name, email, password } = req.body;
+ 
+  // Verifica si los datos se están recibiendo correctamente
+  console.log("Datos recibidos:", req.body);
+ 
+  const query = `INSERT INTO users (name, email, password)
+                 VALUES ('${name}', '${email}', '${password}')`;
+ 
+  try {
+    db.query(query, (err, result) => {
+      if (err) {
+        console.error("Error al insertar el usuario:", err);
+        res.status(500).send('Error en la base de datos');
+      } else {
+        res.json(result); // Devuelve el resultado si la inserción fue exitosa
+      }
+    });
+  } catch (e) {
+    console.error("Error en el servidor:", e);
+    res.status(500).send('Error en el servidor');
+  }
+} );
 
 
 app.post('/agregarCurso', (req, res) => {
