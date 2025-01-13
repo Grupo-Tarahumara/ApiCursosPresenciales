@@ -112,6 +112,28 @@ app.get('/usuarios', (req, res) => {
   });
 });
 
+app.put('/actualizarUsuario', (req, res) => {
+  const { id, name, email, password } = req.body;
+ 
+  const query = `UPDATE users
+                 SET name = '${name}', email = '${email}', password = '${password}'
+                 WHERE id = ${id}`;
+ 
+  try {
+    db.query(query, (err, result) => {
+      if (err) {
+        console.error("Error al actualizar el usuario:", err);
+        res.status(500).send('Error en la base de datos');
+      } else {
+        res.json(result);
+      }
+    });
+  } catch (e) {
+    console.error("Error en el servidor:", e);
+    res.status(500).send('Error en el servidor');
+  }
+});
+
 
 app.post('/agregarCurso', (req, res) => {
   
