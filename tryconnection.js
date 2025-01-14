@@ -3,6 +3,7 @@ const mysql = require('mysql2');
 const cors = require('cors');
 const app = express();
 const port = 3001;
+const bcrypt = require('bcrypt');
 app.use(express.json())
 
 //dates to do a connection
@@ -40,11 +41,8 @@ db.connect(err => {
   console.log('Connected to the database');
 });
 
-
 // course assigned , completed  
 app.use(cors());
-
-
 
 app.get('/cursospresenciales', (req, res) => {
   const query=`SELECT * FROM cursosPresenciales.cursos_presenciales;`;
@@ -77,7 +75,9 @@ app.get('/', (req, res) => {
 
 app.post('/agregarUsuario', (req, res) => {
   
-  const { name, email, password } = req.body;
+  var { name, email, password } = req.body;
+  password = bcrypt.hashSync(password, 10);
+
  
   // Verifica si los datos se están recibiendo correctamente
   console.log("Datos recibidos:", req.body);
@@ -183,9 +183,40 @@ app.post('/agregarCursoTomado',(req,res)=>{
 
     console.log(e)
   }
+})
 
+app.post('/Login',(req,res)=>{
+  const { email, password } = req.body;
 
-  
+  if (!email || !password) {
+    return res.status(400).send('Email y contraseña son requeridos');
+  }
+
+  try{
+    query = `SELECT * FROM users WHERE email = ? `;
+    db.query(query,[email], async (err, result) => {
+      if (err) {
+        console.error("Error al buscar el usuario:", err);
+        return res.status(500).send('Error en la base de datos');
+      }
+      if (result.length === 0) {
+        return res.status(401).send('Usuario no encontrado');
+      }
+      const user = result[0];
+      const validPassword = await bcrypt.compare(password, user.password);
+      console.log(password, user.password, validPassword);
+
+      if (!validPassword) {
+        console.log("Contraseña incorrecta");
+        return res.status(401).send('Contraseña incorrecta');
+      }
+      return res.json(user);
+    }
+    );
+  }catch(e){
+    console.log(e)
+    res.status(500).send('Error en el servidor');
+  }
 
 })
 
