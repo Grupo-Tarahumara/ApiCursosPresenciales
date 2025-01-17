@@ -14,7 +14,7 @@ const returnConnection=() =>{
       host: '192.168.29.40',
       user: 'root',
       password: 'C0L1s3um.t4r4',
-      database: 'cursosPresenciales',
+      database: 'site',
       port: '3010'  
 });
 }
@@ -219,6 +219,45 @@ app.post('/Login',(req,res)=>{
   }
 
 })
+
+//Blog part
+app.get('/posts', (req, res) => {
+  const query = `SELECT * FROM Blog`;
+ 
+  db.query(query, (err, results) => {
+    if (err) {
+      res.status(500).send('Error fetching data');
+      console.log(err)
+      return;
+    }
+    res.json(results);
+    console.log(results)
+  });
+});
+
+app.post('/AgregarPost', (req, res) => {
+  const { img, title, desc, date, img_author, name_author, num_empleado, tag } = req.body;
+  
+  // Consulta con placeholders para los valores
+  const query = `INSERT INTO Blog (img, title, \`desc\`, date, img_author, name_author, num_empleado, tag) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
+
+  const values = [img, title, desc, date, img_author, name_author, num_empleado, tag];
+
+  try {
+    db.query(query, values, (err, result) => {
+      if (err) {
+        console.error("Error al insertar el post:", err);
+        res.status(500).send('Error en la base de datos');
+      } else {
+        res.json(result);
+      }
+    });
+  } catch (e) {
+    console.error("Error en el servidor:", e);
+    res.status(500).send('Error en el servidor');
+  }
+});
 
 //open port 
 app.listen(port, () => {
