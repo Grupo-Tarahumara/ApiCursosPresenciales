@@ -134,6 +134,29 @@ app.put('/actualizarUsuario', (req, res) => {
   }
 });
 
+app.post('/actualizarCurso', (req, res) => {
+  const { id_course,title, description, area,tutor} = req.body;
+
+  console.log(req.body.id_course,req.body.title,req.body.descripcion,req.body.area,req.body.tutor)
+ console.log(req.body)
+  const query = `UPDATE cursos_presenciales
+                 SET title= '${title}', description = '${description}', area= '${area}',tutor= '${tutor}' WHERE id_course= ${id_course}`;
+ 
+  try {
+    db.query(query, (err, result) => {
+      if (err) {
+        console.error("Error al actualizar el usuario:", err);
+        res.status(500).send('Error en la base de datos');
+      } else {
+        res.json(result);
+      }
+    });
+  } catch (e) {
+    console.error("Error en el servidor:", e);
+    res.status(500).send('Error en el servidor');
+  }
+});
+
 
 app.post('/agregarCurso', (req, res) => {
   
