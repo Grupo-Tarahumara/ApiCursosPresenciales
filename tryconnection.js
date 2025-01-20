@@ -45,7 +45,7 @@ db.connect(err => {
 app.use(cors());
 
 app.get('/cursospresenciales', (req, res) => {
-  const query=`SELECT * FROM cursos_presenciales;`;
+  const query=`SELECT * FROM cursos_presenciales where status="true";`;
   db.query(query, (err, results) => {
     if (err) {
       res.status(500).send('Error fetching data');
@@ -320,6 +320,31 @@ app.delete('/EliminarPost/:idBlog', (req, res) => {
     }
   });
 });
+
+app.post("/eliminarCurso", (req,res)=>{
+
+
+  const {id_course}=req.body;
+
+ const query = `UPDATE cursos_presenciales
+  SET status= 'false'  WHERE id_course= ${id_course}`;
+  try {
+    db.query(query, (err, result) => {
+      if (err) {
+        console.error("Error al actualizar el usuario:", err);
+        res.status(500).send('Error en la base de datos');
+      } else {
+        res.json(result);
+      }
+    });
+  } catch (e) {
+    console.error("Error en el servidor:", e);
+    res.status(500).send('Error en el servidor');
+  }
+
+
+
+})
 
 //open port 
 app.listen(port, () => {
