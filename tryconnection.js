@@ -45,7 +45,7 @@ db.connect(err => {
 app.use(cors());
 
 app.get('/cursospresenciales', (req, res) => {
-  const query=`SELECT * FROM cursosPresenciales.cursos_presenciales;`;
+  const query=`SELECT * FROM cursos_presenciales;`;
   db.query(query, (err, results) => {
     if (err) {
       res.status(500).send('Error fetching data');
@@ -57,7 +57,7 @@ app.get('/cursospresenciales', (req, res) => {
 
 
 app.get('/cursostomados', (req, res) => {
-  const query=`SELECT * FROM cursos_presenciales inner join usuario_curso on  usuario_curso.id_course= cursos_presenciales.id_course;`;
+  const query=`SELECT * FROM cursos_presenciales inner join usuario_curso on usuario_curso.id_course= cursos_presenciales.id_course;`;
   db.query(query, (err, results) => {
     if (err) {
       res.status(500).send('Error fetching data');
@@ -280,6 +280,45 @@ app.post('/AgregarPost', (req, res) => {
     console.error("Error en el servidor:", e);
     res.status(500).send('Error en el servidor');
   }
+});
+
+app.put('/ActualizarPost', (req, res) => {
+  const { idBlog, img, title, desc, date, img_author, name_author, num_empleado, tag } = req.body;
+ 
+  const query = `UPDATE Blog
+                 SET img = ?, title = ?, \`desc\` = ?, date = ?, img_author = ?, name_author = ?, num_empleado = ?, tag = ?
+                 WHERE idBlog = ?`;
+ 
+  const values = [img, title, desc, date, img_author, name_author, num_empleado, tag, idBlog];
+ 
+  try {
+    db.query(query, values, (err, result) => {
+      if (err) {
+        console.error("Error al actualizar el post:", err);
+        res.status(500).send('Error en la base de datos');
+      } else {
+        res.json(result);
+      }
+    });
+  } catch (e) {
+    console.error("Error en el servidor:", e);
+    res.status(500).send('Error en el servidor');
+  }
+});
+
+app.delete('/EliminarPost/:idBlog', (req, res) => {
+  const { idBlog } = req.params;
+ 
+  const query = `DELETE FROM Blog WHERE idBlog = ?`;
+ 
+  db.query(query, [idBlog], (err, result) => {
+    if (err) {
+      console.error("Error al eliminar el post:", err);
+      res.status(500).send('Error en la base de datos');
+    } else {
+      res.json(result);
+    }
+  });
 });
 
 //open port 
