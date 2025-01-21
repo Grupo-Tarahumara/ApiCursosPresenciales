@@ -160,13 +160,13 @@ app.post('/actualizarCurso', (req, res) => {
 
 app.post('/agregarCurso', (req, res) => {
   
-  const { title, description, area, tutor } = req.body;
+  const { title, description, area, tutor,start_date ,end_date } = req.body;
  
   // Verifica si los datos se están recibiendo correctamente
   console.log("Datos recibidos:", req.body);
  
-  const query = `INSERT INTO cursos_presenciales (title, description, area, tutor,status)
-                 VALUES ('${title}', '${description}', '${area}', '${tutor}',"true")`;
+  const query = `INSERT INTO cursos_presenciales (title, description, area, tutor,start_date,end_date,status)
+                 VALUES ('${title}', '${description}', '${area}', '${tutor}','${start_date} ','${end_date} ',"true")`;
  
   try {
     db.query(query, (err, result) => {
