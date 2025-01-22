@@ -208,6 +208,29 @@ app.post('/agregarCursoTomado',(req,res)=>{
   }
 })
 
+app.post('/updateCargaMasiva', (req, res) => {
+  const datosExcel = req.body; // Aquí recibimos el objeto JSON con los datos
+
+  // Verificamos que los datos existan y sean válidos
+  if (!datosExcel || typeof datosExcel !== 'object') {
+    return res.status(400).send('Datos inválidos');
+  }
+
+  // Construimos la consulta SQL para insertar el JSON
+  const query = 'update carga_masiva  set datos_excel = ?  where id_carga =1';
+
+  // Ejecutamos la consulta, pasando el JSON como parámetro
+  db.query(query, [JSON.stringify(datosExcel)], (err, result) => {
+    if (err) {
+      console.error("Error al insertar los datos:", err);
+      res.status(500).send('Error en la base de datos');
+    } else {
+      console.log("Datos insertados con éxito:", result);
+      res.json(result);
+    }
+  });
+});
+
 app.post('/Login',(req,res)=>{
   const { email, password } = req.body;
 
