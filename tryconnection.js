@@ -208,63 +208,123 @@ app.post('/agregarCursoTomado',(req,res)=>{
   }
 })
 
-app.post('/updateCargaMasiva', (req, res) => {
+app.post('/updateCargaMasiva', async (req, res) => {
   const datosExcel = req.body; // Aquí recibimos el objeto JSON con los datos
+  console.log("Datos recibidos:", datosExcel);
 
-  // Verificamos que los datos existan y sean válidos
-  if (!datosExcel || typeof datosExcel !== 'object') {
-    return res.status(400).send('Datos inválidos');
+  // Verificar que los datos existan y sean válidos
+  if (!Array.isArray(datosExcel) || datosExcel.length === 0) {
+    return res.status(400).json({ success: false, message: 'Datos inválidos o vacíos' });
   }
 
-  // Construimos la consulta SQL para insertar el JSON
-  const query = 'update carga_masiva  set datos_excel = ?  where id_carga =1';
+  // Desestructuración del primer curso para insertar en la tabla `cursos_presenciales`
+  const { id_usuario, curso, tutor, fecha, departamento } = datosExcel[0];
+  const queryInsertCourse = `
+    INSERT INTO cursos_presenciales (title, description, area, tutor, start_date, end_date, status)
+    VALUES (?, '', '', ?, ?, '', 'true')
+  `;
+  const querySelectCourse = `
+    SELECT id_course FROM cursos_presenciales
+    WHERE title = ? AND tutor = ? AND start_date = ?
+  `;
+  const queryInsertUserCourse = `
+    INSERT INTO usuario_curso (id_usuario, id_course) VALUES ?
+  `;
 
-  // Ejecutamos la consulta, pasando el JSON como parámetro
-  db.query(query, [JSON.stringify(datosExcel)], (err, result) => {
-    if (err) {
-      console.error("Error al insertar los datos:", err);
-      res.status(500).send('Error en la base de datos');
+  try {
+    // Paso 1: Verificar si el curso ya existe
+    const [existingCourse] = await db.promise().query(querySelectCourse, [curso, tutor, fecha]);
+    let id_course;
+
+    if (existingCourse.length > 0) {
+      // Si el curso ya existe, usar su ID
+      id_course = existingCourse[0].id_course;
+      console.log("El curso ya existe. Usando ID existente:", id_course);
     } else {
-      console.log("Datos insertados con éxito:", result);
-      res.json(result);
+      // Si el curso no existe, insertarlo y obtener su ID
+      const [insertResult] = await db.promise().query(queryInsertCourse, [curso, tutor, fecha]);
+      console.log("Curso agregado con éxito:", insertResult);
+
+      const [courseResult] = await db.promise().query(querySelectCourse, [curso, tutor, fecha]);
+      if (courseResult.length === 0) {
+        return res.status(404).json({ success: false, message: 'No se encontró el curso recién creado' });
+      }
+      id_course = courseResult[0].id_course;
+      console.log("Nuevo curso creado con ID:", id_course);
     }
-  });
+
+    // Paso 2: Insertar en `usuario_curso` para todos los usuarios
+    const values2 = datosExcel.map(curso => [curso.id_usuario, id_course]);
+    const [userCourseResult] = await db.promise().query(queryInsertUserCourse, [values2]);
+    console.log("Usuarios asignados al curso con éxito:", userCourseResult);
+
+    // Respuesta exitosa
+    res.status(200).json({ success: true, message: "Proceso completado con éxito" });
+  } catch (error) {
+    console.error("Error en el proceso:", error);
+
+    // Manejar errores específicos
+    if (error.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ success: false, message: 'Ya se asignó algun usuario a este curso.' });
+    }
+
+    // Manejar otros errores
+    res.status(500).json({ success: false, message: error.message || 'Error en el servidor' });
+  }
 });
 
-app.post('/Login',(req,res)=>{
+app.post('/login', async (req, res) => {
   const { email, password } = req.body;
 
+  // Log: Datos recibidos en la solicitud
+  console.log(`[LOG] Solicitud de inicio de sesión recibida. Email: ${email}, Contraseña: ${password}`);
+
   if (!email || !password) {
-    return res.status(400).send('Email y contraseña son requeridos');
+    console.log('[LOG] Error: Email o contraseña no proporcionados.');
+    return res.status(400).json({ success: false, message: 'Email y contraseña son requeridos' });
   }
 
-  try{
-    query = `SELECT * FROM users WHERE email = ? `;
-    db.query(query,[email], async (err, result) => {
+  try {
+    const query = `SELECT * FROM users WHERE email = ?`;
+    console.log(`[LOG] Buscando usuario en la base de datos con email: ${email}`);
+
+    db.query(query, [email], async (err, result) => {
       if (err) {
-        console.error("Error al buscar el usuario:", err);
-        return res.status(500).send('Error en la base de datos');
+        console.error("[LOG] Error al buscar el usuario en la base de datos:", err);
+        return res.status(500).json({ success: false, message: 'Error en la base de datos' });
       }
+
       if (result.length === 0) {
-        return res.status(401).send('Usuario no encontrado');
+        console.log(`[LOG] Usuario no encontrado para el email: ${email}`);
+        return res.status(401).json({ success: false, message: 'Usuario no encontrado' });
       }
+
       const user = result[0];
+      console.log(`[LOG] Usuario encontrado:`, {
+        id: user.id,
+        email: user.email,
+        contraseñaAlmacenada: user.password, // ¡Cuidado! No exponer esto en producción.
+      });
+
+      // Log: Comparación de contraseñas
+      console.log(`[LOG] Comparando contraseñas. Contraseña recibida: ${password}, Contraseña almacenada (hash): ${user.password}`);
+
       const validPassword = await bcrypt.compare(password, user.password);
-      console.log(password, user.password, validPassword);
+      console.log(`[LOG] Resultado de la comparación de contraseñas: ${validPassword}`);
 
       if (!validPassword) {
-        console.log("Contraseña incorrecta");
-        return res.status(401).send('Contraseña incorrecta');
+        console.log('[LOG] Error: Contraseña incorrecta.');
+        return res.status(401).json({ success: false, message: 'Contraseña incorrecta' });
       }
-      return res.json(user);
-    }
-    );
-  }catch(e){
-    console.log(e)
-    res.status(500).send('Error en el servidor');
-  }
 
-})
+      console.log(`[LOG] Inicio de sesión exitoso para el usuario: ${user.email}`);
+      return res.json({ success: true, message: 'Inicio de sesión exitoso', data: user });
+    });
+  } catch (e) {
+    console.error('[LOG] Error en el servidor:', e);
+    res.status(500).json({ success: false, message: 'Error en el servidor' });
+  }
+});
 
 //Blog part
 app.get('/posts', (req, res) => {
