@@ -229,6 +229,7 @@ app.post('/updateCargaMasiva', async (req, res) => {
   `;
   const queryInsertUserCourse = `
     INSERT INTO usuario_curso (id_usuario, id_course) VALUES ?
+    ON DUPLICATE KEY UPDATE id_course = VALUES(id_course)
   `;
 
   try {
@@ -262,11 +263,6 @@ app.post('/updateCargaMasiva', async (req, res) => {
     res.status(200).json({ success: true, message: "Proceso completado con éxito" });
   } catch (error) {
     console.error("Error en el proceso:", error);
-
-    // Manejar errores específicos
-    if (error.code === 'ER_DUP_ENTRY') {
-      return res.status(409).json({ success: false, message: 'Ya se asignó algun usuario a este curso.' });
-    }
 
     // Manejar otros errores
     res.status(500).json({ success: false, message: error.message || 'Error en el servidor' });
