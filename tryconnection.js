@@ -329,26 +329,42 @@ app.post('/login', async (req, res) => {
 //Blog part
 app.get('/posts', (req, res) => {
   const query = `SELECT * FROM Blog`;
- 
+
   db.query(query, (err, results) => {
     if (err) {
       res.status(500).send('Error fetching data');
-      console.log(err)
+      console.log(err);
       return;
     }
-    res.json(results);
-    console.log(results)
+
+    // Asegúrate de que las imágenes se devuelvan como un array
+    const posts = results.map(post => {
+      if (post.img && typeof post.img === 'string') {
+        try {
+          post.img = JSON.parse(post.img); // Convierte la cadena JSON a un array
+        } catch (error) {
+          console.error('Error al parsear las imágenes:', error);
+          post.img = [];
+        }
+      }
+      return post;
+    });
+
+    res.json(posts);
+    console.log(posts);
   });
 });
 
 app.post('/AgregarPost', (req, res) => {
   const { img, title, desc, date, img_author, name_author, num_empleado, tag } = req.body;
   
+  const images = Array.isArray(img) ? img : [img]; 
+  const imgList = JSON.stringify(images);
   // Consulta con placeholders para los valores
   const query = `INSERT INTO Blog (img, title, \`desc\`, date, img_author, name_author, num_empleado, tag) 
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
 
-  const values = [img, title, desc, date, img_author, name_author, num_empleado, tag];
+  const values = [imgList, title, desc, date, img_author, name_author, num_empleado, tag];
 
   try {
     db.query(query, values, (err, result) => {
