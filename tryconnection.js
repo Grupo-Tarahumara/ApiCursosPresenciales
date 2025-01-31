@@ -405,8 +405,8 @@ app.put('/ActualizarPost', (req, res) => {
   }
 });
 
-app.delete('/EliminarPost/:idBlog', (req, res) => {
-  const { idBlog } = req.params;
+app.delete('/EliminarPost', (req, res) => {
+  const { idBlog } = req.body;
  
   const query = `DELETE FROM Blog WHERE idBlog = ?`;
  
