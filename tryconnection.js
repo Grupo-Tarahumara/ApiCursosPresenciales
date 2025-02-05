@@ -135,13 +135,11 @@ app.put('/actualizarUsuario', (req, res) => {
 });
 
 app.post('/actualizarCurso', (req, res) => {
-  const { id_course,title, description, area,tutor} = req.body;
+  const { id_course,title, description, area,tutor, start_date, end_date} = req.body;
 
-  console.log(req.body.id_course,req.body.title,req.body.descripcion,req.body.area,req.body.tutor)
- console.log(req.body)
-  const query = `UPDATE cursos_presenciales
-                 SET title= '${title}', description = '${description}', area= '${area}',tutor= '${tutor}' WHERE id_course= ${id_course}`;
- 
+  console.log(req.body)
+  const query = `UPDATE cursos_presenciales SET title= '${title}', description = '${description}', area= '${area}',tutor= '${tutor}',start_date= '${start_date}',end_date= '${end_date}' WHERE id_course= ${id_course}`;
+
   try {
     db.query(query, (err, result) => {
       if (err) {
@@ -156,7 +154,6 @@ app.post('/actualizarCurso', (req, res) => {
     res.status(500).send('Error en el servidor');
   }
 });
-
 
 app.post('/agregarCurso', (req, res) => {
   
@@ -182,7 +179,6 @@ app.post('/agregarCurso', (req, res) => {
     res.status(500).send('Error en el servidor');
   }
 });
-
 
 app.post('/agregarCursoTomado',(req,res)=>{
 
