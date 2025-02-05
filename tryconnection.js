@@ -218,10 +218,10 @@ app.post('/updateCargaMasiva', async (req, res) => {
   }
 
   // Desestructuración del primer curso para insertar en la tabla `cursos_presenciales`
-  const { id_usuario, curso, tutor, fecha, departamento } = datosExcel[0];
+  const { id_usuario, curso, tutor, fecha, end_date, departamento } = datosExcel[0];
   const queryInsertCourse = `
     INSERT INTO cursos_presenciales (title, description, area, tutor, start_date, end_date, status)
-    VALUES (?, '', '', ?, ?, '', 'true')
+    VALUES (?, '', '', ?, ?, ?, 'true')
   `;
   const querySelectCourse = `
     SELECT id_course FROM cursos_presenciales
@@ -243,7 +243,7 @@ app.post('/updateCargaMasiva', async (req, res) => {
       console.log("El curso ya existe. Usando ID existente:", id_course);
     } else {
       // Si el curso no existe, insertarlo y obtener su ID
-      const [insertResult] = await db.promise().query(queryInsertCourse, [curso, tutor, fecha]);
+      const [insertResult] = await db.promise().query(queryInsertCourse, [curso, tutor, fecha , end_date]);
       console.log("Curso agregado con éxito:", insertResult);
 
       const [courseResult] = await db.promise().query(querySelectCourse, [curso, tutor, fecha]);
