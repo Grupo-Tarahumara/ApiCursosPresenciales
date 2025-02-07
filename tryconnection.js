@@ -135,10 +135,10 @@ app.put('/actualizarUsuario', (req, res) => {
 });
 
 app.post('/actualizarCurso', (req, res) => {
-  const { id_course,title, description, area,tutor, start_date, end_date} = req.body;
+  const { id_course,title, description, tutor, start_date, end_date, progress} = req.body;
 
   console.log(req.body)
-  const query = `UPDATE cursos_presenciales SET title= '${title}', description = '${description}', area= '${area}',tutor= '${tutor}',start_date= '${start_date}',end_date= '${end_date}' WHERE id_course= ${id_course}`;
+  const query = `UPDATE cursos_presenciales SET title= '${title}', description = '${description}',tutor= '${tutor}',start_date= '${start_date}',end_date= '${end_date}' WHERE id_course= ${id_course}`;
 
   try {
     db.query(query, (err, result) => {
@@ -157,13 +157,13 @@ app.post('/actualizarCurso', (req, res) => {
 
 app.post('/agregarCurso', (req, res) => {
   
-  const { title, description, area, tutor,start_date ,end_date } = req.body;
+  const { title, description, tutor,start_date ,end_date, progress} = req.body;
  
   // Verifica si los datos se están recibiendo correctamente
   console.log("Datos recibidos:", req.body);
  
-  const query = `INSERT INTO cursos_presenciales (title, description, area, tutor,start_date,end_date,status)
-                 VALUES ('${title}', '${description}', '${area}', '${tutor}','${start_date} ','${end_date} ',"true")`;
+  const query = `INSERT INTO cursos_presenciales (title, description, tutor,start_date,end_date,status)
+                 VALUES ('${title}', '${description}', '${tutor}','${start_date} ','${end_date} ',"true")`;
  
   try {
     db.query(query, (err, result) => {
@@ -214,9 +214,9 @@ app.post('/updateCargaMasiva', async (req, res) => {
   }
 
   // Desestructuración del primer curso para insertar en la tabla `cursos_presenciales`
-  const { id_usuario, curso, tutor, fecha, end_date, departamento } = datosExcel[0];
+  const { id_usuario, curso, tutor, fecha, end_date, departamento, progress } = datosExcel[0];
   const queryInsertCourse = `
-    INSERT INTO cursos_presenciales (title, description, area, tutor, start_date, end_date, status)
+    INSERT INTO cursos_presenciales (title, description, tutor, start_date, end_date, status)
     VALUES (?, '', '', ?, ?, ?, 'true')
   `;
   const querySelectCourse = `
@@ -224,7 +224,7 @@ app.post('/updateCargaMasiva', async (req, res) => {
     WHERE title = ? AND tutor = ? AND start_date = ?
   `;
   const queryInsertUserCourse = `
-    INSERT INTO usuario_curso (id_usuario, id_course) VALUES ?
+    INSERT INTO usuario_curso (id_usuario, id_course, progress) VALUES ?
     ON DUPLICATE KEY UPDATE id_course = VALUES(id_course)
   `;
 
@@ -251,7 +251,7 @@ app.post('/updateCargaMasiva', async (req, res) => {
     }
 
     // Paso 2: Insertar en `usuario_curso` para todos los usuarios
-    const values2 = datosExcel.map(curso => [curso.id_usuario, id_course]);
+    const values2 = datosExcel.map(curso => [curso.id_usuario, id_course, curso.progress]);
     const [userCourseResult] = await db.promise().query(queryInsertUserCourse, [values2]);
     console.log("Usuarios asignados al curso con éxito:", userCourseResult);
 
