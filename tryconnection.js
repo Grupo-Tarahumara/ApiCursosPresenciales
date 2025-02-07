@@ -225,7 +225,7 @@ app.post('/updateCargaMasiva', async (req, res) => {
   `;
   const queryInsertUserCourse = `
     INSERT INTO usuario_curso (id_usuario, id_course, progress) VALUES ?
-    ON DUPLICATE KEY UPDATE id_course, progress = VALUES(id_course, progress)
+    ON DUPLICATE KEY UPDATE id_course = VALUES(id_course), progress = VALUES(progress)
   `;
 
   try {
