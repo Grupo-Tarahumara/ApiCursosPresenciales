@@ -67,6 +67,29 @@ app.get('/cursostomados', (req, res) => {
   });
 });
 
+app.post('/updateProgress', (req, res) => {
+  const { id_usuario, id_course, progress } = req.body;
+  console.log(req.body)
+ 
+  const query = `UPDATE usuario_curso
+                 SET progress = '${progress}'
+                 WHERE id_usuario = ${id_usuario} AND id_course = ${id_course}`;
+ 
+  try {
+    db.query(query, (err, result) => {
+      if (err) {
+        console.error("Error al actualizar el progreso:", err);
+        res.status(500).send('Error en la base de datos');
+      } else {
+        res.json(result);
+      }
+    });
+  } catch (e) {
+    console.error("Error en el servidor:", e);
+    res.status(500).send('Error en el servidor');
+  }
+});
+
 
 app.get('/', (req, res) => {
   console.log("hola"); // Logs "hola" to the server console
