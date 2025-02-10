@@ -460,6 +460,89 @@ app.post("/eliminarCurso", (req,res)=>{
 
 })
 
+app.get('/convenios', (req, res) => {
+  const query = `SELECT * FROM convenios`;
+
+  db.query(query, (err, results) => {
+    if (err) {
+      res.status(500).send('Error fetching data');
+      console.log(err);
+      return;
+    }
+
+    res.json(results);
+    console.log(results);       
+  });
+});
+
+app.post('/agregarConvenio', (req, res) => {
+  const { titulo, descripcion, img, link } = req.body;
+
+  console.log("Datos recibidos:", req.body);
+
+  const query = `INSERT INTO convenios (titulo, descripcion, img, link)
+                 VALUES (?, ?, ?, ?)`;
+
+  const values = [titulo, descripcion, img, link];
+
+  try {
+    db.query(query, values, (err, result) => {
+      if (err) {
+        console.error("Error al insertar el convenio:", err);
+        res.status(500).send('Error en la base de datos');
+      } else {
+        res.json(result);
+      }
+    });
+  } catch (e) {
+    console.error("Error en el servidor:", e);
+    res.status(500).send('Error en el servidor');
+  }
+});
+
+app.put('/actualizarConvenio', (req, res) => {
+  const { idConvenio, titulo, descripcion, img, link} = req.body;
+
+  const query = `UPDATE convenios
+                 SET titulo = ?, descripcion = ?, img = ?, link = ?
+                 WHERE idConvenio = ?`;
+  
+  const values = [titulo, descripcion, img, link, idConvenio];
+
+  try {
+    db.query(query, values, (err, result) => {
+      if (err) {
+        console.error("Error al actualizar el convenio:", err);
+        res.status(500).send('Error en la base de datos');
+      }
+      else {
+        res.json(result);
+      }
+    }
+    );
+  } catch (e) {
+    console.error("Error en el servidor:", e);
+    res.status(500).send('Error en el servidor');
+  }
+}
+);
+
+app.delete('/eliminarConvenio', (req, res) => {
+  const { idConvenio } = req.body;
+ 
+  const query = `DELETE FROM convenios WHERE idConvenio = ?`;
+
+  db.query(query, [idConvenio], (err, result) => {
+    if (err) {
+      console.error("Error al eliminar el convenio:", err);
+      res.status(500).send('Error en la base de datos');
+    } else {
+      res.json(result);
+    }
+  }
+  );
+});
+
 //open port 
 app.listen(port, () => {
   console.log(`API running at http://localhost:${port}`);
