@@ -105,8 +105,8 @@ app.post('/agregarUsuario', (req, res) => {
   // Verifica si los datos se están recibiendo correctamente
   console.log("Datos recibidos:", req.body);
  
-  const query = `INSERT INTO users (name, email, password)
-                 VALUES ('${name}', '${email}', '${password}')`;
+  const query = `INSERT INTO users (name, email, password, status)
+                 VALUES ('${name}', '${email}', '${password}', 'Activo')`;
  
   try {
     db.query(query, (err, result) => {
@@ -158,10 +158,12 @@ app.put('/actualizarUsuario', (req, res) => {
   }
 });
 
-app.delete('/eliminarUsuario', (req, res) => {
+app.post('/eliminarUsuario', (req, res) => {
   const { id } = req.body;
  
-  const query = `DELETE FROM users WHERE id = ${id}`;
+  const query = `UPDATE users
+                 SET status = 'Inactivo'
+                 WHERE id = ${id}`;
 
   db.query(query, (err, result) => {
     if (err) {
