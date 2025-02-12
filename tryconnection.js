@@ -136,7 +136,7 @@ app.get('/usuarios', (req, res) => {
 });
 
 app.put('/actualizarUsuario', (req, res) => {
-  const { id, name, email, password } = req.body;
+  var { id, name, email, password } = req.body;
   password = bcrypt.hashSync(password, 10);
  
   const query = `UPDATE users
