@@ -158,6 +158,23 @@ app.put('/actualizarUsuario', (req, res) => {
   }
 });
 
+app.delete('/eliminarUsuario', (req, res) => {
+  const { id } = req.body;
+ 
+  const query = `DELETE FROM users WHERE id = ${id}`;
+
+  db.query(query, (err, result) => {
+    if (err) {
+      console.error("Error al eliminar el usuario:", err);
+      res.status(500).send('Error en la base de datos');
+    } else {
+      res.json(result);
+    }
+  }
+  );
+}
+);
+
 app.post('/actualizarCurso', (req, res) => {
   const { id_course,title, description, tutor, start_date, end_date, progress} = req.body;
 
