@@ -136,19 +136,15 @@ app.get('/usuarios', (req, res) => {
 
 app.put('/actualizarUsuario', (req, res) => {
   var { id, name, email, password } = req.body;
-  if(password){
+  let query; // Declarar la variable antes de los bloques if
+
+  if (password) {
     password = bcrypt.hashSync(password, 10);
-    const query = `UPDATE users
-                 SET name = '${name}', email = '${email}', password = '${password}'
-                 WHERE id = ${id}`;
-  }
-  else{
-    const query = `UPDATE users
-                 SET name = '${name}', email = '${email}'
-                 WHERE id = ${id}`;
+    query = `UPDATE users SET name = '${name}', email = '${email}', password = '${password}' WHERE id = ${id}`;
+  } else {
+    query = `UPDATE users SET name = '${name}', email = '${email}' WHERE id = ${id}`;
   }
   
- 
   try {
     db.query(query, (err, result) => {
       if (err) {
