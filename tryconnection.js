@@ -101,7 +101,6 @@ app.post('/agregarUsuario', (req, res) => {
   var { name, email, password } = req.body;
   password = bcrypt.hashSync(password, 10);
 
- 
   // Verifica si los datos se están recibiendo correctamente
   console.log("Datos recibidos:", req.body);
  
@@ -137,11 +136,18 @@ app.get('/usuarios', (req, res) => {
 
 app.put('/actualizarUsuario', (req, res) => {
   var { id, name, email, password } = req.body;
-  password = bcrypt.hashSync(password, 10);
- 
-  const query = `UPDATE users
+  if(password){
+    password = bcrypt.hashSync(password, 10);
+    const query = `UPDATE users
                  SET name = '${name}', email = '${email}', password = '${password}'
                  WHERE id = ${id}`;
+  }
+  else{
+    const query = `UPDATE users
+                 SET name = '${name}', email = '${email}'
+                 WHERE id = ${id}`;
+  }
+  
  
   try {
     db.query(query, (err, result) => {
