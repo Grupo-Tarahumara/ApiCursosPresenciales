@@ -180,10 +180,10 @@ app.post('/eliminarUsuario', (req, res) => {
 );
 
 app.post('/actualizarCurso', (req, res) => {
-  const { id_course,title, description, tutor, start_date, end_date, progress} = req.body;
+  const { id_course,title, description, tutor, progress} = req.body;
 
   console.log(req.body)
-  const query = `UPDATE cursos_presenciales SET title= '${title}', description = '${description}',tutor= '${tutor}',start_date= '${start_date}',end_date= '${end_date}' WHERE id_course= ${id_course}`;
+  const query = `UPDATE cursos_presenciales SET title= '${title}', description = '${description}',tutor= '${tutor}' WHERE id_course= ${id_course}`;
 
   try {
     db.query(query, (err, result) => {
@@ -200,57 +200,116 @@ app.post('/actualizarCurso', (req, res) => {
   }
 });
 
-app.post('/agregarCurso', (req, res) => {
-  
-  const { title, description, tutor,start_date ,end_date, progress} = req.body;
- 
-  // Verifica si los datos se están recibiendo correctamente
-  console.log("Datos recibidos:", req.body);
- 
-  const query = `INSERT INTO cursos_presenciales (title, description, tutor,start_date,end_date,status)
-                 VALUES ('${title}', '${description}', '${tutor}','${start_date} ','${end_date} ',"true")`;
- 
+app.delete('/eliminarCursoTomado', (req, res) => {
+  const { id_usuario, id_course } = req.body;
+
+  // Validar entrada
+  if (!id_usuario || !id_course) {
+    return res.status(400).json({ error: 'Datos incompletos' });
+  }
+
+  console.log("Eliminando curso:", req.body);
+
+  const query = `DELETE FROM usuario_curso WHERE id_usuario = ? AND id_course = ?`;
+
+  db.query(query, [id_usuario, id_course], (err, result) => {
+    if (err) {
+      console.error("Error al eliminar el curso tomado:", err);
+      return res.status(500).json({ error: 'Error en la base de datos' });
+    }
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Curso no encontrado o ya eliminado' });
+    }
+
+    res.json({ success: true, message: 'Curso eliminado correctamente' });
+  });
+});
+
+
+app.post('/agregarCurso', async (req, res) => {
   try {
-    db.query(query, (err, result) => {
-      if (err) {
-        console.error("Error al insertar el curso:", err);
-        res.status(500).send('Error en la base de datos');
-      } else {
-        res.json(result); // Devuelve el resultado si la inserción fue exitosa
-      }
-    });
-  } catch (e) {
-    console.error("Error en el servidor:", e);
-    res.status(500).send('Error en el servidor');
+    const { title, description, tutor } = req.body;
+
+    // Validación de datos
+    if (!title || !description || !tutor) {
+      return res.status(400).json({ error: 'Datos incompletos' });
+    }
+
+    console.log("Datos recibidos:", req.body);
+
+    const query = `INSERT INTO cursos_presenciales (title, description, tutor, status) VALUES (?, ?, ?, 'true')`;
+
+    const [result] = await db.promise().query(query, [title, description, tutor]);
+
+    res.json({ success: true, message: 'Curso agregado correctamente', result });
+
+  } catch (error) {
+    console.error("Error al insertar el curso:", error);
+    res.status(500).json({ error: 'Error en la base de datos' });
   }
 });
 
-app.post('/agregarCursoTomado',(req,res)=>{
 
-  const { id_usuario,id_course } = req.body;
- 
+app.post('/agregarCursoTomado', (req, res) => {
+  const { id_usuario, id_course } = req.body;
+
+  // Validación de entrada
+  if (!id_usuario || !id_course) {
+    return res.status(400).json({ error: 'Datos incompletos' });
+  }
 
   console.log("Datos recibidos:", req.body);
- 
-  const query = `INSERT INTO usuario_curso (id_usuario, id_course) VALUES ('${id_usuario} ','${id_course} ')`;
-  try{
-  db.query(query, (err, result) => {
+
+  const query = `INSERT INTO usuario_curso (id_usuario, id_course) VALUES (?, ?)`;
+
+  db.query(query, [id_usuario, id_course], (err, result) => {
     if (err) {
       console.error("Error al insertar el curso:", err);
-      res.status(500).send('Error en la base de datos');
-    } else {
-      console.log("Curso agregado con éxito:", result);
-      res.json(result);
+      return res.status(500).json({ error: 'Error en la base de datos' });
     }
+    console.log("Curso agregado con éxito:", result);
+    res.json({ success: true, message: 'Curso agregado con éxito', result });
   });
-  }catch(e){
+});
 
-    console.log(e)
+
+app.post('/api/asignarCurso', async (req, res) => {
+  try {
+    const { courseId, employees } = req.body;
+    
+    if (!courseId || !Array.isArray(employees) || employees.length === 0) {
+      return res.status(400).json({ error: 'Datos incompletos o inválidos' });
+    }
+
+    const startDate = new Date().toISOString().split('T')[0];
+    const endDate = new Date();
+    endDate.setMonth(endDate.getMonth() + 1);
+    const formattedEndDate = endDate.toISOString().split('T')[0];
+
+    const query = `
+      INSERT INTO usuario_curso (id_usuario, id_course, progress, start_date, end_date) 
+      VALUES ? 
+      ON DUPLICATE KEY UPDATE 
+        progress = VALUES(progress), 
+        end_date = VALUES(end_date)
+    `;
+
+    const values = employees.map(emp => [emp, courseId, 0, startDate, formattedEndDate]);
+
+    const [results] = await db.promise().query(query, [values]);
+
+    console.log("Curso asignado con éxito:", results);
+    res.json({ message: 'Curso asignado correctamente', results });
+
+  } catch (err) {
+    console.error("Error asignando curso:", err);
+    res.status(500).json({ error: 'Error asignando curso' });
   }
-})
+});
 
 app.post('/updateCargaMasiva', async (req, res) => {
-  const datosExcel = req.body; // Aquí recibimos el objeto JSON con los datos
+  const datosExcel = req.body; // Recibimos el objeto JSON con los datos
   console.log("Datos recibidos:", datosExcel);
 
   // Verificar que los datos existan y sean válidos
@@ -258,36 +317,40 @@ app.post('/updateCargaMasiva', async (req, res) => {
     return res.status(400).json({ success: false, message: 'Datos inválidos o vacíos' });
   }
 
-  // Desestructuración del primer curso para insertar en la tabla `cursos_presenciales`
-  const { id_usuario, curso, tutor, fecha, end_date, departamento, progress } = datosExcel[0];
+  // Extraer datos del primer curso para insertar en `cursos_presenciales`
+  const { id_usuario, curso, tutor, start_date, end_date, progress } = datosExcel[0];
+
   const queryInsertCourse = `
-    INSERT INTO cursos_presenciales (title, description, tutor, start_date, end_date, status)
-    VALUES (?, '', '', ?, ?, ?, 'true')
+    INSERT INTO cursos_presenciales (title, description, tutor, status)
+    VALUES (?, '', ?, 'true')
   `;
+
   const querySelectCourse = `
-    SELECT id_course FROM cursos_presenciales
-    WHERE title = ? AND tutor = ? AND start_date = ?
+    SELECT id_course FROM cursos_presenciales WHERE title = ? AND tutor = ?
   `;
+
   const queryInsertUserCourse = `
-    INSERT INTO usuario_curso (id_usuario, id_course, progress) VALUES ?
-    ON DUPLICATE KEY UPDATE id_course = VALUES(id_course), progress = VALUES(progress)
+    INSERT INTO usuario_curso (id_usuario, id_course, progress, start_date, end_date) 
+    VALUES ? 
+    ON DUPLICATE KEY UPDATE 
+      progress = VALUES(progress), 
+      end_date = VALUES(end_date)
   `;
 
   try {
     // Paso 1: Verificar si el curso ya existe
-    const [existingCourse] = await db.promise().query(querySelectCourse, [curso, tutor, fecha]);
+    const [existingCourse] = await db.promise().query(querySelectCourse, [curso, tutor]);
     let id_course;
 
     if (existingCourse.length > 0) {
-      // Si el curso ya existe, usar su ID
       id_course = existingCourse[0].id_course;
       console.log("El curso ya existe. Usando ID existente:", id_course);
     } else {
-      // Si el curso no existe, insertarlo y obtener su ID
-      const [insertResult] = await db.promise().query(queryInsertCourse, [curso, tutor, fecha , end_date]);
+      // Insertar el curso y obtener su ID
+      const [insertResult] = await db.promise().query(queryInsertCourse, [curso, tutor]);
       console.log("Curso agregado con éxito:", insertResult);
 
-      const [courseResult] = await db.promise().query(querySelectCourse, [curso, tutor, fecha]);
+      const [courseResult] = await db.promise().query(querySelectCourse, [curso, tutor]);
       if (courseResult.length === 0) {
         return res.status(404).json({ success: false, message: 'No se encontró el curso recién creado' });
       }
@@ -295,20 +358,20 @@ app.post('/updateCargaMasiva', async (req, res) => {
       console.log("Nuevo curso creado con ID:", id_course);
     }
 
-    // Paso 2: Insertar en `usuario_curso` para todos los usuarios
-    const values2 = datosExcel.map(curso => [curso.id_usuario, id_course, curso.progress]);
-    const [userCourseResult] = await db.promise().query(queryInsertUserCourse, [values2]);
-    console.log("Usuarios asignados al curso con éxito:", userCourseResult);
+    // Paso 2: Insertar usuarios en `usuario_curso`
+    const values2 = datosExcel.map(curso => [curso.id_usuario, id_course, curso.progress, curso.start_date, curso.end_date]);
+    await db.promise().query(queryInsertUserCourse, [values2]);
+    
+    console.log("Usuarios asignados al curso con éxito");
 
     // Respuesta exitosa
     res.status(200).json({ success: true, message: "Proceso completado con éxito" });
   } catch (error) {
     console.error("Error en el proceso:", error);
-
-    // Manejar otros errores
     res.status(500).json({ success: false, message: error.message || 'Error en el servidor' });
   }
 });
+
 
 app.post('/login', async (req, res) => {
   const { email, password } = req.body;
