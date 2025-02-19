@@ -255,30 +255,29 @@ app.post('/agregarCursoTomado', (req, res) => {
   const { id_usuario, id_course, start_date, end_date, progress } = req.body;
 
   // Validación de entrada
-  if (!id_usuario || !id_course) {
-    return res.status(400).json({ error: 'Datos incompletos' });
+  if (!id_usuario || !id_course || !start_date) {
+      return res.status(400).json({ error: 'Datos incompletos o inválidos' });
   }
 
   console.log("Datos recibidos:", req.body);
 
-  const query = end_date
-    ? `INSERT INTO usuario_curso (id_usuario, id_course, start_date, end_date, progress) VALUES (?, ?, ?, ?, ?)`
-    : `INSERT INTO usuario_curso (id_usuario, id_course, start_date, progress) VALUES (?, ?, ?, ?)`;
+  // Asignar null si progress es undefined
+  const finalProgress = progress !== undefined ? progress : null;
 
-  const values = end_date
-    ? [id_usuario, id_course, start_date, end_date, progress]
-    : [id_usuario, id_course, start_date, progress];
+  // Consulta SQL
+  const query = `INSERT INTO usuario_curso (id_usuario, id_course, progress, start_date, end_date) VALUES (?, ?, ?, ?, ?)`;
+  const values = [id_usuario, id_course, finalProgress, start_date, end_date || null];
 
+  // Ejecutar la consulta
   db.query(query, values, (err, result) => {
-    if (err) {
-      console.error("Error al insertar el curso:", err);
-      return res.status(500).json({ error: 'Error en la base de datos' });
-    }
-    console.log("Curso agregado con éxito:", result);
-    res.json({ success: true, message: 'Curso agregado con éxito', result });
+      if (err) {
+          console.error("Error al insertar el curso:", err);
+          return res.status(500).json({ error: 'Error en la base de datos' });
+      }
+      console.log("Curso agregado con éxito:", result);
+      res.json({ success: true, message: 'Curso agregado con éxito', result });
   });
 });
-
 
 app.post('/api/asignarCurso', async (req, res) => {
   try {
