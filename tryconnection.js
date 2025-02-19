@@ -252,7 +252,7 @@ app.post('/agregarCurso', async (req, res) => {
 
 
 app.post('/agregarCursoTomado', (req, res) => {
-  const { id_usuario, id_course } = req.body;
+  const { id_usuario, id_course, start_date, end_date, progress } = req.body;
 
   // Validación de entrada
   if (!id_usuario || !id_course) {
@@ -261,9 +261,15 @@ app.post('/agregarCursoTomado', (req, res) => {
 
   console.log("Datos recibidos:", req.body);
 
-  const query = `INSERT INTO usuario_curso (id_usuario, id_course) VALUES (?, ?)`;
+  const query = end_date
+    ? `INSERT INTO usuario_curso (id_usuario, id_course, start_date, end_date, progress) VALUES (?, ?, ?, ?, ?)`
+    : `INSERT INTO usuario_curso (id_usuario, id_course, start_date, progress) VALUES (?, ?, ?, ?)`;
 
-  db.query(query, [id_usuario, id_course], (err, result) => {
+  const values = end_date
+    ? [id_usuario, id_course, start_date, end_date, progress]
+    : [id_usuario, id_course, start_date, progress];
+
+  db.query(query, values, (err, result) => {
     if (err) {
       console.error("Error al insertar el curso:", err);
       return res.status(500).json({ error: 'Error en la base de datos' });
