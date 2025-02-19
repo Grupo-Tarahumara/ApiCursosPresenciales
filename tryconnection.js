@@ -545,6 +545,30 @@ app.post("/eliminarCurso", (req,res)=>{
 
 })
 
+app.post('/api/cursoDepartamento', async (req, res) => {
+  const { courseId, end_date, start_date, progress, employees } = req.body;
+  console.log(req.body)
+  if (!courseId || !Array.isArray(employees) || employees.length === 0) {
+    return res.status(400).json({ error: 'Datos incompletos o inválidos' });
+  }
+
+  const query = `
+    INSERT INTO usuario_curso (id_usuario, id_course, progress, start_date, end_date)
+    VALUES ?
+    ON DUPLICATE KEY UPDATE progress = VALUES(progress), end_date = VALUES(end_date)
+  `;
+  const values = employees.map(emp => [emp, courseId, progress, start_date, end_date]);
+
+  try {
+    const [results] = await db.promise().query(query, [values]);
+    console.log("Curso asignado con éxito:", results);
+    res.json({ message: 'Curso asignado correctamente', results });
+  } catch (err) {
+    console.error("Error asignando curso:", err);
+    res.status(500).json({ error: 'Error asignando curso' });
+  }
+});
+
 app.get('/convenios', (req, res) => {
   const query = `SELECT * FROM convenios`;
 
