@@ -231,10 +231,9 @@ app.post('/agregarCurso', async (req, res) => {
   try {
     const { title, description, tutor } = req.body;
 
-    // Validación de datos
-    if (!title || !description || !tutor) {
+    if (!title || !tutor) {
       return res.status(400).json({ error: 'Datos incompletos' });
-    }
+     }
 
     console.log("Datos recibidos:", req.body);
 
