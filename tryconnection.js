@@ -67,6 +67,29 @@ app.get('/cursostomados', (req, res) => {
   });
 });
 
+app.post('/updateProgress', (req, res) => {
+  const { id_usuario, id_course, progress } = req.body;
+  console.log(req.body)
+ 
+  const query = `UPDATE usuario_curso
+                 SET progress = '${progress}'
+                 WHERE id_usuario = ${id_usuario} AND id_course = ${id_course}`;
+ 
+  try {
+    db.query(query, (err, result) => {
+      if (err) {
+        console.error("Error al actualizar el progreso:", err);
+        res.status(500).send('Error en la base de datos');
+      } else {
+        res.json(result);
+      }
+    });
+  } catch (e) {
+    console.error("Error en el servidor:", e);
+    res.status(500).send('Error en el servidor');
+  }
+});
+
 
 app.get('/', (req, res) => {
   console.log("hola"); // Logs "hola" to the server console
@@ -78,12 +101,11 @@ app.post('/agregarUsuario', (req, res) => {
   var { name, email, password } = req.body;
   password = bcrypt.hashSync(password, 10);
 
- 
   // Verifica si los datos se están recibiendo correctamente
   console.log("Datos recibidos:", req.body);
  
-  const query = `INSERT INTO users (name, email, password)
-                 VALUES ('${name}', '${email}', '${password}')`;
+  const query = `INSERT INTO users (name, email, password, status)
+                 VALUES ('${name}', '${email}', '${password}', 'Activo')`;
  
   try {
     db.query(query, (err, result) => {
@@ -113,182 +135,341 @@ app.get('/usuarios', (req, res) => {
 });
 
 app.put('/actualizarUsuario', (req, res) => {
-  const { id, name, email, password } = req.body;
+  var { id, name, email, password } = req.body;
+  let query; // Declarar la variable antes de los bloques if
+
+  if (password) {
+    password = bcrypt.hashSync(password, 10);
+    query = `UPDATE users SET name = '${name}', email = '${email}', password = '${password}' WHERE id = ${id}`;
+  } else {
+    query = `UPDATE users SET name = '${name}', email = '${email}' WHERE id = ${id}`;
+  }
+  
+  try {
+    db.query(query, (err, result) => {
+      if (err) {
+        console.error("Error al actualizar el usuario:", err);
+        res.status(500).send('Error en la base de datos');
+      } else {
+        res.json(result);
+      }
+    });
+  } catch (e) {
+    console.error("Error en el servidor:", e);
+    res.status(500).send('Error en el servidor');
+  }
+});
+
+app.post('/eliminarUsuario', (req, res) => {
+  const { id } = req.body;
  
   const query = `UPDATE users
-                 SET name = '${name}', email = '${email}', password = '${password}'
+                 SET status = 'Inactivo'
                  WHERE id = ${id}`;
- 
-  try {
-    db.query(query, (err, result) => {
-      if (err) {
-        console.error("Error al actualizar el usuario:", err);
-        res.status(500).send('Error en la base de datos');
-      } else {
-        res.json(result);
-      }
-    });
-  } catch (e) {
-    console.error("Error en el servidor:", e);
-    res.status(500).send('Error en el servidor');
-  }
-});
 
-app.post('/actualizarCurso', (req, res) => {
-  const { id_course,title, description, area,tutor} = req.body;
-
-  console.log(req.body.id_course,req.body.title,req.body.descripcion,req.body.area,req.body.tutor)
- console.log(req.body)
-  const query = `UPDATE cursos_presenciales
-                 SET title= '${title}', description = '${description}', area= '${area}',tutor= '${tutor}' WHERE id_course= ${id_course}`;
- 
-  try {
-    db.query(query, (err, result) => {
-      if (err) {
-        console.error("Error al actualizar el usuario:", err);
-        res.status(500).send('Error en la base de datos');
-      } else {
-        res.json(result);
-      }
-    });
-  } catch (e) {
-    console.error("Error en el servidor:", e);
-    res.status(500).send('Error en el servidor');
-  }
-});
-
-
-app.post('/agregarCurso', (req, res) => {
-  
-  const { title, description, tutor} = req.body;
- 
-  // Verifica si los datos se están recibiendo correctamente
-  console.log("Datos recibidos:", req.body);
- 
-  const query = `INSERT INTO cursos_presenciales (title, description,  tutor,status)
-                 VALUES ('${title}', '${description}','${tutor}',"true")`;
- 
-  try {
-    db.query(query, (err, result) => {
-      if (err) {
-        console.error("Error al insertar el curso:", err);
-        res.status(500).send('Error en la base de datos');
-      } else {
-        res.json(result); // Devuelve el resultado si la inserción fue exitosa
-      }
-    });
-  } catch (e) {
-    console.error("Error en el servidor:", e);
-    res.status(500).send('Error en el servidor');
-  }
-});
-
-
-app.post('/agregarCursoTomado',(req,res)=>{
-
-  const { id_usuario,id_course } = req.body;
- 
-
-  console.log("Datos recibidos:", req.body);
- 
-  const query = `INSERT INTO usuario_curso (id_usuario, id_course) VALUES ('${id_usuario} ','${id_course} ')`;
-  try{
   db.query(query, (err, result) => {
     if (err) {
-      console.error("Error al insertar el curso:", err);
+      console.error("Error al eliminar el usuario:", err);
       res.status(500).send('Error en la base de datos');
     } else {
-      console.log("Curso agregado con éxito:", result);
       res.json(result);
     }
-  });
-  }catch(e){
-
-    console.log(e)
   }
-})
+  );
+}
+);
 
-app.post('/updateCargaMasiva', (req, res) => {
-  const datosExcel = req.body; // Aquí recibimos el objeto JSON con los datos
+app.post('/actualizarCurso', (req, res) => {
+  const { id_course,title, description, tutor, progress} = req.body;
 
-  // Verificamos que los datos existan y sean válidos
-  if (!datosExcel || typeof datosExcel !== 'object') {
-    return res.status(400).send('Datos inválidos');
+  console.log(req.body)
+  const query = `UPDATE cursos_presenciales SET title= '${title}', description = '${description}',tutor= '${tutor}' WHERE id_course= ${id_course}`;
+
+  try {
+    db.query(query, (err, result) => {
+      if (err) {
+        console.error("Error al actualizar el usuario:", err);
+        res.status(500).send('Error en la base de datos');
+      } else {
+        res.json(result);
+      }
+    });
+  } catch (e) {
+    console.error("Error en el servidor:", e);
+    res.status(500).send('Error en el servidor');
+  }
+});
+
+app.delete('/eliminarCursoTomado', (req, res) => {
+  const { id_usuario, id_course } = req.body;
+
+  // Validar entrada
+  if (!id_usuario || !id_course) {
+    return res.status(400).json({ error: 'Datos incompletos' });
   }
 
-  // Construimos la consulta SQL para insertar el JSON
-  const query = 'update carga_masiva  set datos_excel = ?  where id_carga =1';
+  console.log("Eliminando curso:", req.body);
 
-  // Ejecutamos la consulta, pasando el JSON como parámetro
-  db.query(query, [JSON.stringify(datosExcel)], (err, result) => {
+  const query = `DELETE FROM usuario_curso WHERE id_usuario = ? AND id_course = ?`;
+
+  db.query(query, [id_usuario, id_course], (err, result) => {
     if (err) {
-      console.error("Error al insertar los datos:", err);
-      res.status(500).send('Error en la base de datos');
-    } else {
-      console.log("Datos insertados con éxito:", result);
-      res.json(result);
+      console.error("Error al eliminar el curso tomado:", err);
+      return res.status(500).json({ error: 'Error en la base de datos' });
     }
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Curso no encontrado o ya eliminado' });
+    }
+
+    res.json({ success: true, message: 'Curso eliminado correctamente' });
   });
 });
 
-app.post('/Login',(req,res)=>{
+
+app.post('/agregarCurso', async (req, res) => {
+  try {
+    const { title, description, tutor } = req.body;
+
+    // Validación de datos
+    if (!title || !description || !tutor) {
+      return res.status(400).json({ error: 'Datos incompletos' });
+    }
+
+    console.log("Datos recibidos:", req.body);
+
+    const query = `INSERT INTO cursos_presenciales (title, description, tutor, status) VALUES (?, ?, ?, 'true')`;
+
+    const [result] = await db.promise().query(query, [title, description, tutor]);
+
+    res.json({ success: true, message: 'Curso agregado correctamente', result });
+
+  } catch (error) {
+    console.error("Error al insertar el curso:", error);
+    res.status(500).json({ error: 'Error en la base de datos' });
+  }
+});
+
+
+app.post('/agregarCursoTomado', (req, res) => {
+  const { id_usuario, id_course, start_date, end_date, progress } = req.body;
+
+  // Validación de entrada
+  if (!id_usuario || !id_course || !start_date) {
+      return res.status(400).json({ error: 'Datos incompletos o inválidos' });
+  }
+
+  console.log("Datos recibidos:", req.body);
+
+  // Asignar null si progress es undefined
+  const finalProgress = progress !== undefined ? progress : null;
+
+  // Consulta SQL
+  const query = `INSERT INTO usuario_curso (id_usuario, id_course, progress, start_date, end_date) VALUES (?, ?, ?, ?, ?)`;
+  const values = [id_usuario, id_course, finalProgress, start_date, end_date || null];
+
+  // Ejecutar la consulta
+  db.query(query, values, (err, result) => {
+      if (err) {
+          console.error("Error al insertar el curso:", err);
+          return res.status(500).json({ error: 'Error en la base de datos' });
+      }
+      console.log("Curso agregado con éxito:", result);
+      res.json({ success: true, message: 'Curso agregado con éxito', result });
+  });
+});
+
+app.post('/api/asignarCurso', async (req, res) => {
+  try {
+    const { courseId, employees } = req.body;
+    
+    if (!courseId || !Array.isArray(employees) || employees.length === 0) {
+      return res.status(400).json({ error: 'Datos incompletos o inválidos' });
+    }
+
+    const startDate = new Date().toISOString().split('T')[0];
+    const endDate = new Date();
+    endDate.setMonth(endDate.getMonth() + 1);
+    const formattedEndDate = endDate.toISOString().split('T')[0];
+
+    const query = `
+      INSERT INTO usuario_curso (id_usuario, id_course, progress, start_date, end_date) 
+      VALUES ? 
+      ON DUPLICATE KEY UPDATE 
+        progress = VALUES(progress), 
+        end_date = VALUES(end_date)
+    `;
+
+    const values = employees.map(emp => [emp, courseId, 0, startDate, formattedEndDate]);
+
+    const [results] = await db.promise().query(query, [values]);
+
+    console.log("Curso asignado con éxito:", results);
+    res.json({ message: 'Curso asignado correctamente', results });
+
+  } catch (err) {
+    console.error("Error asignando curso:", err);
+    res.status(500).json({ error: 'Error asignando curso' });
+  }
+});
+
+app.post('/updateCargaMasiva', async (req, res) => {
+  const datosExcel = req.body; // Recibimos el objeto JSON con los datos
+  console.log("Datos recibidos:", datosExcel);
+
+  // Verificar que los datos existan y sean válidos
+  if (!Array.isArray(datosExcel) || datosExcel.length === 0) {
+    return res.status(400).json({ success: false, message: 'Datos inválidos o vacíos' });
+  }
+
+  // Extraer datos del primer curso para insertar en `cursos_presenciales`
+  const { id_usuario, curso, tutor, start_date, end_date, progress } = datosExcel[0];
+
+  const queryInsertCourse = `
+    INSERT INTO cursos_presenciales (title, description, tutor, status)
+    VALUES (?, '', ?, 'true')
+  `;
+
+  const querySelectCourse = `
+    SELECT id_course FROM cursos_presenciales WHERE title = ? AND tutor = ?
+  `;
+
+  const queryInsertUserCourse = `
+    INSERT INTO usuario_curso (id_usuario, id_course, progress, start_date, end_date) 
+    VALUES ? 
+    ON DUPLICATE KEY UPDATE 
+      progress = VALUES(progress), 
+      end_date = VALUES(end_date)
+  `;
+
+  try {
+    // Paso 1: Verificar si el curso ya existe
+    const [existingCourse] = await db.promise().query(querySelectCourse, [curso, tutor]);
+    let id_course;
+
+    if (existingCourse.length > 0) {
+      id_course = existingCourse[0].id_course;
+      console.log("El curso ya existe. Usando ID existente:", id_course);
+    } else {
+      // Insertar el curso y obtener su ID
+      const [insertResult] = await db.promise().query(queryInsertCourse, [curso, tutor]);
+      console.log("Curso agregado con éxito:", insertResult);
+
+      const [courseResult] = await db.promise().query(querySelectCourse, [curso, tutor]);
+      if (courseResult.length === 0) {
+        return res.status(404).json({ success: false, message: 'No se encontró el curso recién creado' });
+      }
+      id_course = courseResult[0].id_course;
+      console.log("Nuevo curso creado con ID:", id_course);
+    }
+
+    // Paso 2: Insertar usuarios en `usuario_curso`
+    const values2 = datosExcel.map(curso => [curso.id_usuario, id_course, curso.progress, curso.start_date, curso.end_date]);
+    await db.promise().query(queryInsertUserCourse, [values2]);
+    
+    console.log("Usuarios asignados al curso con éxito");
+
+    // Respuesta exitosa
+    res.status(200).json({ success: true, message: "Proceso completado con éxito" });
+  } catch (error) {
+    console.error("Error en el proceso:", error);
+    res.status(500).json({ success: false, message: error.message || 'Error en el servidor' });
+  }
+});
+
+
+app.post('/login', async (req, res) => {
   const { email, password } = req.body;
 
+  // Log: Datos recibidos en la solicitud
+  console.log(`[LOG] Solicitud de inicio de sesión recibida. Email: ${email}, Contraseña: ${password}`);
+
   if (!email || !password) {
-    return res.status(400).send('Email y contraseña son requeridos');
+    console.log('[LOG] Error: Email o contraseña no proporcionados.');
+    return res.status(400).json({ success: false, message: 'Email y contraseña son requeridos' });
   }
 
-  try{
-    query = `SELECT * FROM users WHERE email = ? `;
-    db.query(query,[email], async (err, result) => {
+  try {
+    const query = `SELECT * FROM users WHERE email = ?`;
+    console.log(`[LOG] Buscando usuario en la base de datos con email: ${email}`);
+
+    db.query(query, [email], async (err, result) => {
       if (err) {
-        console.error("Error al buscar el usuario:", err);
-        return res.status(500).send('Error en la base de datos');
+        console.error("[LOG] Error al buscar el usuario en la base de datos:", err);
+        return res.status(500).json({ success: false, message: 'Error en la base de datos' });
       }
+
       if (result.length === 0) {
-        return res.status(401).send('Usuario no encontrado');
+        console.log(`[LOG] Usuario no encontrado para el email: ${email}`);
+        return res.status(401).json({ success: false, message: 'Usuario no encontrado' });
       }
+
       const user = result[0];
+      console.log(`[LOG] Usuario encontrado:`, {
+        id: user.id,
+        email: user.email,
+        contraseñaAlmacenada: user.password, // ¡Cuidado! No exponer esto en producción.
+      });
+
+      // Log: Comparación de contraseñas
+      console.log(`[LOG] Comparando contraseñas. Contraseña recibida: ${password}, Contraseña almacenada (hash): ${user.password}`);
+
       const validPassword = await bcrypt.compare(password, user.password);
-      console.log(password, user.password, validPassword);
+      console.log(`[LOG] Resultado de la comparación de contraseñas: ${validPassword}`);
 
       if (!validPassword) {
-        console.log("Contraseña incorrecta");
-        return res.status(401).send('Contraseña incorrecta');
+        console.log('[LOG] Error: Contraseña incorrecta.');
+        return res.status(401).json({ success: false, message: 'Contraseña incorrecta' });
       }
-      return res.json(user);
-    }
-    );
-  }catch(e){
-    console.log(e)
-    res.status(500).send('Error en el servidor');
-  }
 
-})
+      console.log(`[LOG] Inicio de sesión exitoso para el usuario: ${user.email}`);
+      return res.json({ success: true, message: 'Inicio de sesión exitoso', data: user });
+    });
+  } catch (e) {
+    console.error('[LOG] Error en el servidor:', e);
+    res.status(500).json({ success: false, message: 'Error en el servidor' });
+  }
+});
 
 //Blog part
 app.get('/posts', (req, res) => {
   const query = `SELECT * FROM Blog`;
- 
+
   db.query(query, (err, results) => {
     if (err) {
       res.status(500).send('Error fetching data');
-      console.log(err)
+      console.log(err);
       return;
     }
-    res.json(results);
-    console.log(results)
+
+    // Asegúrate de que las imágenes se devuelvan como un array
+    const posts = results.map(post => {
+      if (post.img && typeof post.img === 'string') {
+        try {
+          post.img = JSON.parse(post.img); // Convierte la cadena JSON a un array
+        } catch (error) {
+          console.error('Error al parsear las imágenes:', error);
+          post.img = [];
+        }
+      }
+      return post;
+    });
+
+    res.json(posts);
+    console.log(posts);
   });
 });
 
 app.post('/AgregarPost', (req, res) => {
   const { img, title, desc, date, img_author, name_author, num_empleado, tag } = req.body;
   
+  const images = Array.isArray(img) ? img : [img]; 
+  const imgList = JSON.stringify(images);
   // Consulta con placeholders para los valores
   const query = `INSERT INTO Blog (img, title, \`desc\`, date, img_author, name_author, num_empleado, tag) 
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
 
-  const values = [img, title, desc, date, img_author, name_author, num_empleado, tag];
+  const values = [imgList, title, desc, date, img_author, name_author, num_empleado, tag];
 
   try {
     db.query(query, values, (err, result) => {
@@ -329,8 +510,8 @@ app.put('/ActualizarPost', (req, res) => {
   }
 });
 
-app.delete('/EliminarPost/:idBlog', (req, res) => {
-  const { idBlog } = req.params;
+app.delete('/EliminarPost', (req, res) => {
+  const { idBlog } = req.body;
  
   const query = `DELETE FROM Blog WHERE idBlog = ?`;
  
@@ -368,6 +549,113 @@ app.post("/eliminarCurso", (req,res)=>{
 
 
 })
+
+app.post('/api/cursoDepartamento', async (req, res) => {
+  const { courseId, end_date, start_date, progress, employees } = req.body;
+  console.log(req.body)
+  if (!courseId || !Array.isArray(employees) || employees.length === 0) {
+    return res.status(400).json({ error: 'Datos incompletos o inválidos' });
+  }
+
+  const query = `
+    INSERT INTO usuario_curso (id_usuario, id_course, progress, start_date, end_date)
+    VALUES ?
+    ON DUPLICATE KEY UPDATE progress = VALUES(progress), end_date = VALUES(end_date)
+  `;
+  const values = employees.map(emp => [emp, courseId, progress, start_date, end_date]);
+
+  try {
+    const [results] = await db.promise().query(query, [values]);
+    console.log("Curso asignado con éxito:", results);
+    res.json({ message: 'Curso asignado correctamente', results });
+  } catch (err) {
+    console.error("Error asignando curso:", err);
+    res.status(500).json({ error: 'Error asignando curso' });
+  }
+});
+
+app.get('/convenios', (req, res) => {
+  const query = `SELECT * FROM convenios`;
+
+  db.query(query, (err, results) => {
+    if (err) {
+      res.status(500).send('Error fetching data');
+      console.log(err);
+      return;
+    }
+
+    res.json(results);
+    console.log(results);       
+  });
+});
+
+app.post('/agregarConvenio', (req, res) => {
+  const { titulo, descripcion, img, link } = req.body;
+
+  console.log("Datos recibidos:", req.body);
+
+  const query = `INSERT INTO convenios (titulo, descripcion, img, link)
+                 VALUES (?, ?, ?, ?)`;
+
+  const values = [titulo, descripcion, img, link];
+
+  try {
+    db.query(query, values, (err, result) => {
+      if (err) {
+        console.error("Error al insertar el convenio:", err);
+        res.status(500).send('Error en la base de datos');
+      } else {
+        res.json(result);
+      }
+    });
+  } catch (e) {
+    console.error("Error en el servidor:", e);
+    res.status(500).send('Error en el servidor');
+  }
+});
+
+app.put('/actualizarConvenio', (req, res) => {
+  const { idConvenio, titulo, descripcion, img, link} = req.body;
+
+  const query = `UPDATE convenios
+                 SET titulo = ?, descripcion = ?, img = ?, link = ?
+                 WHERE idConvenio = ?`;
+  
+  const values = [titulo, descripcion, img, link, idConvenio];
+
+  try {
+    db.query(query, values, (err, result) => {
+      if (err) {
+        console.error("Error al actualizar el convenio:", err);
+        res.status(500).send('Error en la base de datos');
+      }
+      else {
+        res.json(result);
+      }
+    }
+    );
+  } catch (e) {
+    console.error("Error en el servidor:", e);
+    res.status(500).send('Error en el servidor');
+  }
+}
+);
+
+app.delete('/eliminarConvenio', (req, res) => {
+  const { idConvenio } = req.body;
+ 
+  const query = `DELETE FROM convenios WHERE idConvenio = ?`;
+
+  db.query(query, [idConvenio], (err, result) => {
+    if (err) {
+      console.error("Error al eliminar el convenio:", err);
+      res.status(500).send('Error en la base de datos');
+    } else {
+      res.json(result);
+    }
+  }
+  );
+});
 
 //open port 
 app.listen(port, () => {
