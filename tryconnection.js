@@ -525,6 +525,32 @@ app.delete('/EliminarPost', (req, res) => {
   });
 });
 
+app.put('like/:id', (req, res) => {
+  const { id } = req.params;
+  const query = `UPDATE Blog SET likes = likes + 1 WHERE idBlog = ?`;
+  db.query(query, [id], (err, result) => {
+    if (err) {
+      console.error("Error al actualizar los likes:", err);
+      res.status(500).send('Error en la base de datos');
+    } else {
+      res.json(result);
+    }
+  });
+});
+
+app.put('dislike/:id', (req, res) => {
+  const { id } = req.params;
+  const query = `UPDATE Blog SET dislikes = dislikes + 1 WHERE idBlog = ?`;
+  db.query(query, [id], (err, result) => {
+    if (err) {
+      console.error("Error al actualizar los dislikes:", err);
+      res.status(500).send('Error en la base de datos');
+    } else {
+      res.json(result);
+    }
+  });
+});
+
 app.post("/eliminarCurso", (req,res)=>{
 
 
