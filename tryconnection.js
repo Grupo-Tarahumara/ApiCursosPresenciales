@@ -201,7 +201,7 @@ app.post('/actualizarCurso', (req, res) => {
 });
 
 app.delete('/eliminarCursoTomado', (req, res) => {
-  const { id_usuario, id_course, stat_date } = req.body;
+  const { id_usuario, id_course, start_date } = req.body;
 
   // Validar entrada
   if (!id_usuario || !id_course) {
