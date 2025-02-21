@@ -212,7 +212,7 @@ app.delete('/eliminarCursoTomado', (req, res) => {
 
   const query = `DELETE FROM usuario_curso WHERE id_usuario = ? AND id_course = ? AND start_date = ?`;
 
-  db.query(query, [id_usuario, id_course, stat_date], (err, result) => {
+  db.query(query, [id_usuario, id_course, start_date], (err, result) => {
     if (err) {
       console.error("Error al eliminar el curso tomado:", err);
       return res.status(500).json({ error: 'Error en la base de datos' });
