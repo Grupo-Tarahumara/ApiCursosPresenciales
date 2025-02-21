@@ -201,7 +201,7 @@ app.post('/actualizarCurso', (req, res) => {
 });
 
 app.delete('/eliminarCursoTomado', (req, res) => {
-  const { id_usuario, id_course } = req.body;
+  const { id_usuario, id_course, stat_date } = req.body;
 
   // Validar entrada
   if (!id_usuario || !id_course) {
@@ -210,9 +210,9 @@ app.delete('/eliminarCursoTomado', (req, res) => {
 
   console.log("Eliminando curso:", req.body);
 
-  const query = `DELETE FROM usuario_curso WHERE id_usuario = ? AND id_course = ?`;
+  const query = `DELETE FROM usuario_curso WHERE id_usuario = ? AND id_course = ? AND start_date = ?`;
 
-  db.query(query, [id_usuario, id_course], (err, result) => {
+  db.query(query, [id_usuario, id_course, stat_date], (err, result) => {
     if (err) {
       console.error("Error al eliminar el curso tomado:", err);
       return res.status(500).json({ error: 'Error en la base de datos' });
