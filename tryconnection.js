@@ -524,7 +524,7 @@ app.delete('/EliminarPost', (req, res) => {
   });
 });
 
-app.put('like/:id', (req, res) => {
+app.put('/like/:id', (req, res) => {
   const { id } = req.params;
   const query = `UPDATE Blog SET likes = likes + 1 WHERE idBlog = ?`;
   db.query(query, [id], (err, result) => {
@@ -537,7 +537,7 @@ app.put('like/:id', (req, res) => {
   });
 });
 
-app.put('dislike/:id', (req, res) => {
+app.put('/dislike/:id', (req, res) => {
   const { id } = req.params;
   const query = `UPDATE Blog SET dislikes = dislikes + 1 WHERE idBlog = ?`;
   db.query(query, [id], (err, result) => {
