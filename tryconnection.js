@@ -539,7 +539,7 @@ app.put('/like/:id', (req, res) => {
 
 app.put('/dislike/:id', (req, res) => {
   const { id } = req.params;
-  const query = `UPDATE Blog SET likes = likes + 1 WHERE idBlog = ?`;
+  const query = `UPDATE Blog SET likes = likes - 1 WHERE idBlog = ?`;
   db.query(query, [id], (err, result) => {
     if (err) {
       console.error("Error al actualizar los dislikes:", err);
