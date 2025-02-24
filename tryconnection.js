@@ -260,7 +260,6 @@ app.post('/agregarCursoTomado', (req, res) => {
 
   console.log("Datos recibidos:", req.body);
 
-  // Asignar null si progress es undefined
   const finalProgress = progress !== undefined ? progress : null;
 
   // Consulta SQL
@@ -487,12 +486,13 @@ app.post('/AgregarPost', (req, res) => {
 
 app.put('/ActualizarPost', (req, res) => {
   const { idBlog, img, title, desc, date, img_author, name_author, num_empleado, tag } = req.body;
- 
+  const images = Array.isArray(img) ? img : [img]; 
+  const imgList = JSON.stringify(images);
   const query = `UPDATE Blog
                  SET img = ?, title = ?, \`desc\` = ?, date = ?, img_author = ?, name_author = ?, num_empleado = ?, tag = ?
                  WHERE idBlog = ?`;
  
-  const values = [img, title, desc, date, img_author, name_author, num_empleado, tag, idBlog];
+  const values = [imgList, title, desc, date, img_author, name_author, num_empleado, tag, idBlog];
  
   try {
     db.query(query, values, (err, result) => {
