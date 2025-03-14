@@ -329,7 +329,7 @@ app.post('/updateCargaMasiva', async (req, res) => {
   `;
 
   const querySelectCourse = `
-    SELECT id_course FROM cursos_presenciales WHERE title = ? AND tutor = ?
+    SELECT id_course FROM cursos_presenciales WHERE title = ? AND tutor = ? AND status = 'true'
   `;
 
   const queryInsertUserCourse = `
