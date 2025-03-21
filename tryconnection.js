@@ -464,7 +464,7 @@ app.post('/AgregarPost', (req, res) => {
   const images = Array.isArray(img) ? img : [img]; 
   const imgList = JSON.stringify(images);
   // Consulta con placeholders para los valores
-  const query = `INSERT INTO Blog (img, title, \`desc\`, date, img_author, name_author, num_empleado, tag, videUrl) 
+  const query = `INSERT INTO Blog (img, title, \`desc\`, date, img_author, name_author, num_empleado, tag, videoUrl) 
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
   const values = [imgList, title, desc, date, img_author, name_author, num_empleado, tag, videoUrl];
