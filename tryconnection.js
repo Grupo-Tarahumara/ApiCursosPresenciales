@@ -459,15 +459,15 @@ app.get('/posts', (req, res) => {
 });
 
 app.post('/AgregarPost', (req, res) => {
-  const { img, title, desc, date, img_author, name_author, num_empleado, tag } = req.body;
+  const { img, title, desc, date, img_author, name_author, num_empleado, tag, videoUrl } = req.body;
   
   const images = Array.isArray(img) ? img : [img]; 
   const imgList = JSON.stringify(images);
   // Consulta con placeholders para los valores
-  const query = `INSERT INTO Blog (img, title, \`desc\`, date, img_author, name_author, num_empleado, tag) 
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
+  const query = `INSERT INTO Blog (img, title, \`desc\`, date, img_author, name_author, num_empleado, tag, videUrl) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
-  const values = [imgList, title, desc, date, img_author, name_author, num_empleado, tag];
+  const values = [imgList, title, desc, date, img_author, name_author, num_empleado, tag, videoUrl];
 
   try {
     db.query(query, values, (err, result) => {
@@ -485,14 +485,14 @@ app.post('/AgregarPost', (req, res) => {
 });
 
 app.put('/ActualizarPost', (req, res) => {
-  const { idBlog, img, title, desc, date, img_author, name_author, num_empleado, tag } = req.body;
+  const { idBlog, img, title, desc, date, img_author, name_author, num_empleado, tag, videoUrl } = req.body;
   const images = Array.isArray(img) ? img : [img]; 
   const imgList = JSON.stringify(images);
   const query = `UPDATE Blog
-                 SET img = ?, title = ?, \`desc\` = ?, date = ?, img_author = ?, name_author = ?, num_empleado = ?, tag = ?
+                 SET img = ?, title = ?, \`desc\` = ?, date = ?, img_author = ?, name_author = ?, num_empleado = ?, tag = ?, videoUrl = ?
                  WHERE idBlog = ?`;
  
-  const values = [imgList, title, desc, date, img_author, name_author, num_empleado, tag, idBlog];
+  const values = [imgList, title, desc, date, img_author, name_author, num_empleado, tag, videoUrl, idBlog];
  
   try {
     db.query(query, values, (err, result) => {
