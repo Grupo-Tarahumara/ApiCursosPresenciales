@@ -686,14 +686,16 @@ app.get('/comentarios', (req, res) => {
 app.post('/comentarios', (req, res) => {
   const { idBlog, num_empleado, contenido } = req.body;
 
+  console.log("Nuevo comentario recibido:", req.body); // 👈 Esto te dirá qué llega
+
   const query = `INSERT INTO Comentarios (idBlog, num_empleado, contenido) VALUES (?, ?, ?)`;
   db.query(query, [idBlog, num_empleado, contenido], (err, result) => {
     if (err) {
       console.error('Error al agregar comentario:', err);
-      res.status(500).send('Error al agregar comentario');
-    } else {
-      res.json({ message: 'Comentario agregado', idComentario: result.insertId });
+      return res.status(500).send('Error al agregar comentario');
     }
+
+    res.json({ message: 'Comentario agregado', idComentario: result.insertId });
   });
 });
 
