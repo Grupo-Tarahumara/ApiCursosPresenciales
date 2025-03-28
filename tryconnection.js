@@ -667,6 +667,66 @@ app.delete('/eliminarConvenio', (req, res) => {
   );
 });
 
+//comentarios
+
+app.get('/comentarios', (req, res) => {
+  const { post } = req.query;
+
+  const query = `SELECT * FROM Comentarios WHERE idBlog = ? ORDER BY fecha DESC`;
+  db.query(query, [post], (err, results) => {
+    if (err) {
+      console.error('Error al obtener comentarios:', err);
+      res.status(500).send('Error al obtener comentarios');
+    } else {
+      res.json(results);
+    }
+  });
+});
+
+app.post('/comentarios', (req, res) => {
+  const { idBlog, num_empleado, contenido } = req.body;
+
+  const query = `INSERT INTO Comentarios (idBlog, num_empleado, contenido) VALUES (?, ?, ?)`;
+  db.query(query, [idBlog, num_empleado, contenido], (err, result) => {
+    if (err) {
+      console.error('Error al agregar comentario:', err);
+      res.status(500).send('Error al agregar comentario');
+    } else {
+      res.json({ message: 'Comentario agregado', idComentario: result.insertId });
+    }
+  });
+});
+
+app.put('/comentarios/:id', (req, res) => {
+  const { id } = req.params;
+  const { contenido } = req.body;
+
+  const query = `UPDATE Comentarios SET contenido = ?, editado = 1 WHERE idComentario = ?`;
+  db.query(query, [contenido, id], (err) => {
+    if (err) {
+      console.error('Error al actualizar comentario:', err);
+      res.status(500).send('Error al actualizar comentario');
+    } else {
+      res.json({ message: 'Comentario actualizado' });
+    }
+  });
+});
+
+app.delete('/comentarios/:id', (req, res) => {
+  const { id } = req.params;
+
+  const query = `DELETE FROM Comentarios WHERE idComentario = ?`;
+  db.query(query, [id], (err) => {
+    if (err) {
+      console.error('Error al eliminar comentario:', err);
+      res.status(500).send('Error al eliminar comentario');
+    } else {
+      res.json({ message: 'Comentario eliminado' });
+    }
+  });
+});
+
+
 //open port 
 app.listen(port, () => {
   console.log(`API running at http://localhost:${port}`);
