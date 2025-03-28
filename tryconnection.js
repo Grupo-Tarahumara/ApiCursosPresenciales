@@ -98,14 +98,14 @@ app.get('/', (req, res) => {
 
 app.post('/agregarUsuario', (req, res) => {
   
-  var { name, email, password } = req.body;
+  var { name, email, password, num_empleado } = req.body;
   password = bcrypt.hashSync(password, 10);
 
   // Verifica si los datos se están recibiendo correctamente
   console.log("Datos recibidos:", req.body);
  
-  const query = `INSERT INTO users (name, email, password, status)
-                 VALUES ('${name}', '${email}', '${password}', 'Activo')`;
+  const query = `INSERT INTO users (name, email, password, status, num_empleado)
+                 VALUES ('${name}', '${email}', '${password}', 'Activo', '${num_empleado}')`;
  
   try {
     db.query(query, (err, result) => {
@@ -135,14 +135,14 @@ app.get('/usuarios', (req, res) => {
 });
 
 app.put('/actualizarUsuario', (req, res) => {
-  var { id, name, email, password } = req.body;
+  var { id, name, email, password, num_empleado } = req.body;
   let query; // Declarar la variable antes de los bloques if
 
   if (password) {
     password = bcrypt.hashSync(password, 10);
-    query = `UPDATE users SET name = '${name}', email = '${email}', password = '${password}' WHERE id = ${id}`;
+    query = `UPDATE users SET name = '${name}', email = '${email}', password = '${password}', num_empleado = '${num_empleado}' WHERE id = ${id}`;
   } else {
-    query = `UPDATE users SET name = '${name}', email = '${email}' WHERE id = ${id}`;
+    query = `UPDATE users SET name = '${name}', email = '${email}', num_empleado = '${num_empleado}' WHERE id = ${id}`;
   }
   
   try {
@@ -377,50 +377,35 @@ app.post('/updateCargaMasiva', async (req, res) => {
 
 
 app.post('/login', async (req, res) => {
-  const { email, password } = req.body;
+  const { email, num_empleado, password } = req.body;
+  const identifier = email || num_empleado;
 
-  // Log: Datos recibidos en la solicitud
-  console.log(`[LOG] Solicitud de inicio de sesión recibida. Email: ${email}, Contraseña: ${password}`);
+  console.log(`[LOG] Solicitud de inicio de sesión recibida: ${identifier}`);
 
-  if (!email || !password) {
-    console.log('[LOG] Error: Email o contraseña no proporcionados.');
-    return res.status(400).json({ success: false, message: 'Email y contraseña son requeridos' });
+  if (!identifier || !password) {
+    return res.status(400).json({ success: false, message: 'Correo o número de empleado y contraseña son requeridos' });
   }
 
   try {
-    const query = `SELECT * FROM users WHERE email = ?`;
-    console.log(`[LOG] Buscando usuario en la base de datos con email: ${email}`);
+    const query = `SELECT * FROM users WHERE email = ? OR num_empleado = ?`;
 
-    db.query(query, [email], async (err, result) => {
+    db.query(query, [identifier, identifier], async (err, result) => {
       if (err) {
-        console.error("[LOG] Error al buscar el usuario en la base de datos:", err);
+        console.error("[LOG] Error al buscar el usuario:", err);
         return res.status(500).json({ success: false, message: 'Error en la base de datos' });
       }
 
       if (result.length === 0) {
-        console.log(`[LOG] Usuario no encontrado para el email: ${email}`);
         return res.status(401).json({ success: false, message: 'Usuario no encontrado' });
       }
 
       const user = result[0];
-      console.log(`[LOG] Usuario encontrado:`, {
-        id: user.id,
-        email: user.email,
-        contraseñaAlmacenada: user.password, // ¡Cuidado! No exponer esto en producción.
-      });
-
-      // Log: Comparación de contraseñas
-      console.log(`[LOG] Comparando contraseñas. Contraseña recibida: ${password}, Contraseña almacenada (hash): ${user.password}`);
-
       const validPassword = await bcrypt.compare(password, user.password);
-      console.log(`[LOG] Resultado de la comparación de contraseñas: ${validPassword}`);
 
       if (!validPassword) {
-        console.log('[LOG] Error: Contraseña incorrecta.');
         return res.status(401).json({ success: false, message: 'Contraseña incorrecta' });
       }
 
-      console.log(`[LOG] Inicio de sesión exitoso para el usuario: ${user.email}`);
       return res.json({ success: true, message: 'Inicio de sesión exitoso', data: user });
     });
   } catch (e) {
