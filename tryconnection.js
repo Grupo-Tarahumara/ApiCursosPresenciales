@@ -840,7 +840,7 @@ app.post('/vacaciones', async (req, res) => {
     
       await enviarCorreo(
         primerAprobador.email,
-        "Nueva solicitud de aprobación",
+        "Nueva solicitud de vacaciones",
         `
          <div style="font-family: 'Segoe UI', sans-serif; background-color: #f4f4f7; padding: 40px;">
           <div style="max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; padding: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
