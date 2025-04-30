@@ -6,13 +6,16 @@ import { enviarCorreo } from './emailService.js';
 import crypto from 'crypto';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 // 👇 Forma correcta de obtener __dirname en ES Modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const port = 3001;
+const port = process.env.SERVER_PORT || 3041;
 
 app.use(cors());
 app.use(express.json());
@@ -21,16 +24,15 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 //dates to do a connection
 
-const returnConnection=() =>{
-
-   return mysql.createConnection({
-      host: '192.168.29.40',
-      user: 'root',
-      password: 'C0L1s3um.t4r4',
-      database: 'site',
-      port: '3010'  
-});
-}
+const returnConnection = () => {
+  return mysql.createConnection({
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_DATABASE,
+    port: process.env.DB_PORT
+  });
+};
 
 var db =returnConnection()
 
