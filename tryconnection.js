@@ -59,8 +59,6 @@ db.connect(err => {
   console.log('Connected to the database');
 });
 
-// course assigned , completed  
-app.use(cors());
 
 app.get('/cursospresenciales', (req, res) => {
   const query=`SELECT * FROM cursos_presenciales where status="true";`;
