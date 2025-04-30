@@ -17,7 +17,10 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const port = process.env.SERVER_PORT || 3041;
 
-app.use(cors());
+app.use(cors({
+  origin: 'https://capacitacion.in.grupotarahumara.com.mx', 
+  credentials: true
+}));
 app.use(express.json());
 
 // 🖼️ Servir archivos estáticos desde la carpeta /public
