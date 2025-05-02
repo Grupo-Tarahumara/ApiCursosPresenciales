@@ -17,10 +17,7 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const port = process.env.SERVER_PORT || 3041;
 
-app.use(cors({
-  origin: 'https://capacitacion.in.grupotarahumara.com.mx', 
-  credentials: true
-}));
+app.use(cors());
 app.use(express.json());
 
 // 🖼️ Servir archivos estáticos desde la carpeta /public
@@ -746,14 +743,15 @@ app.delete('/comentarios/:id', (req, res) => {
 
 // Vacaciones
 app.post('/vacaciones', async (req, res) => {
-  const { num_empleado, fechas, comentarios, datos_json, tipo_movimiento } = req.body;
+  const { num_empleado, fechas, comentarios, datos_json, tipo_movimiento, nivel_aprobacion } = req.body;
 
   console.log("🟢 [REQ] Solicitud de vacaciones recibida");
   console.log("📨 num_empleado:", num_empleado);
   console.log("📆 fechas:", fechas);
   console.log("📝 comentarios:", comentarios);
   console.log("📦 datos_json:", datos_json);
-  console.log("🔢 tipo_movimiento (niveles aprobación):", tipo_movimiento);
+  console.log("🔢 tipo_movimiento:", tipo_movimiento);
+  console.log("🔢 nivel_aprobacion:", nivel_aprobacion);
 
   if (
     !num_empleado ||
@@ -796,7 +794,7 @@ app.post('/vacaciones', async (req, res) => {
     }
 
     // Paso 3: Insertar aprobadores dinámicamente
-    for (let i = 1; i <= tipo_movimiento; i++) {
+    for (let i = 1; i <= nivel_aprobacion; i++) {
       const aprobadorKey = `AprobadorNivel${i}`;
       const aprobador = empleado[aprobadorKey];
     
@@ -967,7 +965,6 @@ function procesarAprobacion(idAprobacion, estatus, nota = null) {
 
       console.log(`🔄 Procesando aprobación ID ${idAprobacion} con estatus ${estatus}`);
 
-      // 1. Actualizar la aprobación
       db.query(
         `UPDATE aprobaciones_movimientos
          SET estatus = ?, nota = ?, fecha_aprobacion = NOW()
@@ -979,7 +976,6 @@ function procesarAprobacion(idAprobacion, estatus, nota = null) {
             return db.rollback(() => reject(err));
           }
 
-          // 2. Obtener datos del movimiento
           db.query(
             `SELECT idMovimiento, orden, id_aprobador
              FROM aprobaciones_movimientos
@@ -1087,53 +1083,74 @@ function procesarAprobacion(idAprobacion, estatus, nota = null) {
                             const { email, token_aprobacion, name } = result[0];
                             console.log("📧 Enviando correo a siguiente aprobador:", email);
 
-                            const enlace = `http://api-cursos.192.168.29.40.sslip.io/api/aprobaciones/responder?token=${token_aprobacion}`;
+                            // Obtener datos adicionales del movimiento
+                            db.query(
+                              `SELECT tipo_movimiento, datos_json
+                               FROM movimientos_personal
+                               WHERE idMovimiento = ?`,
+                              [movimientoId],
+                              async (err, [mov]) => {
+                                if (err) {
+                                  console.error("❌ Error obteniendo datos del movimiento:", err);
+                                  return db.rollback(() => reject(err));
+                                }
 
-                            try {
-                              await enviarCorreo(
-                                email,
-                                "Nueva solicitud de movimiento de personal",
-                                `
-                                 <div style="font-family: 'Segoe UI', sans-serif; background-color: #f4f4f7; padding: 40px;">
-                                  <div style="max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; padding: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
-                                    <div style="text-align: center;">
-                                      <img src="https://drive.google.com/uc?export=view&id=1V-r6CDerFoilWIRxwWcwTmjV6BJOexvS" />
-                                      <h2 style="color: #333333;">¡Hola, ${name}!</h2>
+                                const { tipo_movimiento, datos_json } = mov;
+                                const datos = JSON.parse(datos_json || "{}");
+                                const htmlExtra = renderDatosHtml(tipo_movimiento, datos);
+
+                                const enlace = `http://api-cursos.192.168.29.40.sslip.io/api/aprobaciones/responder?token=${token_aprobacion}`;
+
+                                try {
+                                  await enviarCorreo(
+                                    email,
+                                    "Nueva solicitud de movimiento de personal",
+                                    `
+                                    <div style="font-family: 'Segoe UI', sans-serif; background-color: #f4f4f7; padding: 40px;">
+                                      <div style="max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; padding: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+                                        <div style="text-align: center;">
+                                          <img src="https://drive.google.com/uc?export=view&id=1V-r6CDerFoilWIRxwWcwTmjV6BJOexvS" />
+                                          <h2 style="color: #333333;">¡Hola, ${name}!</h2>
+                                        </div>
+                                        <p style="color: #555555; font-size: 16px; line-height: 1.6;">
+                                          Se ha generado una nueva <strong>solicitud de movimiento de personal</strong> tipo <strong>${tipo_movimiento}</strong> que requiere tu revisión.
+                                        </p>
+                                        <div style="margin-top: 16px; font-size: 15px; color: #333;">
+                                          ${htmlExtra}
+                                        </div>
+                                        <div style="text-align: center; margin: 30px 0;">
+                                          <a href="${enlace}&accion=aprobado"
+                                            style="background-color: #28a745; color: white; padding: 14px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; margin-right: 12px;">
+                                            ✅ Aprobar
+                                          </a>
+                                          <a href="${enlace}&accion=rechazado"
+                                            style="background-color: #dc3545; color: white; padding: 14px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
+                                            ❌ Rechazar
+                                          </a>
+                                        </div>
+                                        <p style="color: #777777; font-size: 14px; line-height: 1.5;">
+                                          Este mensaje ha sido enviado automáticamente por el sistema de recursos humanos de <strong>Grupo Tarahumara</strong>.
+                                        </p>
+                                      </div>
                                     </div>
-                                    <p style="color: #555555; font-size: 16px; line-height: 1.6;">
-                                      Se ha generado una nueva <strong>solicitud de movimiento de personal</strong> que requiere tu revisión y aprobación.
-                                    </p>
-                                    <div style="text-align: center; margin: 30px 0;">
-                                      <a href="${enlace}&accion=aprobado"
-                                        style="background-color: #28a745; color: white; padding: 14px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; margin-right: 12px;">
-                                        ✅ Aprobar
-                                      </a>
-                                      <a href="${enlace}&accion=rechazado"
-                                        style="background-color: #dc3545; color: white; padding: 14px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
-                                        ❌ Rechazar
-                                      </a>
-                                    </div>
-                                    <p style="color: #777777; font-size: 14px; line-height: 1.5;">
-                                      Este mensaje ha sido enviado automáticamente por el sistema de recursos humanos de <strong>Grupo Tarahumara</strong>.
-                                    </p>
-                                  </div>
-                                </div>
-                                `
-                              );
-                            } catch (correoError) {
-                              console.error("❌ Error enviando correo:", correoError);
-                              return db.rollback(() => reject(correoError));
-                            }
+                                    `
+                                  );
+                                } catch (correoError) {
+                                  console.error("❌ Error enviando correo:", correoError);
+                                  return db.rollback(() => reject(correoError));
+                                }
+
+                                db.commit((err) => {
+                                  if (err) {
+                                    console.error('❌ Error en commit final:', err);
+                                    return db.rollback(() => reject(err));
+                                  }
+                                  console.log('✅ Movimiento parcialmente aprobado, correo enviado, transacción finalizada');
+                                  resolve();
+                                });
+                              }
+                            );
                           }
-
-                          db.commit((err) => {
-                            if (err) {
-                              console.error('❌ Error en commit final:', err);
-                              return db.rollback(() => reject(err));
-                            }
-                            console.log('✅ Movimiento parcialmente aprobado, correo enviado, transacción finalizada');
-                            resolve();
-                          });
                         }
                       );
                     }
@@ -1147,6 +1164,93 @@ function procesarAprobacion(idAprobacion, estatus, nota = null) {
     });
   });
 }
+
+function renderDatosHtml(tipo, datos) {
+  switch (tipo) {
+    case "Cambio de descanso":
+      return `<p><strong>Día asignado:</strong> ${datos.assignedRestDay}</p>
+              <p><strong>Día solicitado:</strong> ${datos.requestedRestDay}</p>`;
+    case "Cambio de horario":
+      return `<p><strong>Nuevo horario solicitado:</strong> ${datos.newSchedule}</p>`;
+    case "Comisión Prolongada fuera de Oficina":
+      return `<p><strong>Dias de home office:</strong> ${datos.homeOfficeDays}</p>
+              <p><strong>Inicio:</strong> ${datos.startDate}</p>
+              <p><strong>Fin:</strong> ${datos.endDate}</p>
+              <p><strong>Reincorporación:</strong> ${datos.resumeDate}</p>`;   
+    case "Descanso laborado":
+      return `<p><strong>Día asignado como descanso:</strong> ${datos.assignedRestDay}</p>
+              <p><strong>Día laborado:</strong> ${datos.requestedRestDay}</p>`;
+    case "Viaje de Trabajo":
+      return `
+        <p><strong>Ubicación del viaje:</strong> ${datos.tripLocation}</p>
+        <p><strong>Fecha de inicio:</strong> ${datos.startDate}</p>
+        <p><strong>Fecha de fin:</strong> ${datos.endDate}</p>
+        <p><strong>Fecha de reincorporación:</strong> ${datos.resumeDate}</p>
+      `;
+    
+    
+    case "Permisos Especiales":
+      let dias = 0;
+      switch ((datos.specialType || "").toLowerCase()) {
+        case "matrimonio":
+          dias = 5;
+          break;
+        case "muerte":
+          dias = 2;
+          break;
+        case "paternidad":
+          dias = 5;
+          break;
+      }
+      return `<p><strong>Tipo de permiso especial:</strong> ${datos.specialType}</p>
+              <p><strong>Días de descanso asignados:</strong> ${dias}</p>`;
+
+    case "Viaje de Trabajo":
+      return `<p><strong>Ubicación:</strong> ${datos.tripLocation}</p>
+              <p><strong>Inicio:</strong> ${datos.startDate}</p>
+              <p><strong>Fin:</strong> ${datos.endDate}</p>
+              <p><strong>Reincorporación:</strong> ${datos.resumeDate}</p>`;
+
+    case "Permiso sin goce de sueldo":
+      return `<p><strong>Día solicitado:</strong> ${datos.requestedRestDay}</p>`;
+
+    case "Permiso para llegar tarde":
+      return `<p><strong>Hora de entrada:</strong> ${datos.entryTime}</p>`;
+    case "Retardo justificado":
+      return `<p><strong>Hora de entrada:</strong> ${datos.delayTime}</p>`;
+    case "Salida anticipada":
+      return `<p><strong>Hora de salida anticipada:</strong> ${datos.earlyTime}</p>`;
+      case "Horario de Lactancia":
+        return `
+          <p><strong>Nuevo horario solicitado:</strong> ${datos.newSchedule}</p>
+          <p><strong>Inicio:</strong> ${datos.startDate}</p>
+          <p><strong>Fin:</strong> ${datos.endDate}</p>
+          <p><strong>Reincorporación:</strong> ${datos.resumeDate}</p>
+        `;
+      
+      case "Curso/Capacitación":
+        return `
+          <p><strong>Días de curso:</strong> ${datos.trainingDays}</p>
+          <p><strong>Inicio:</strong> ${datos.startDate}</p>
+          <p><strong>Fin:</strong> ${datos.endDate}</p>
+          <p><strong>Reincorporación:</strong> ${datos.resumeDate}</p>
+        `;
+      
+      case "Junta de trabajo":
+        return `
+          <p><strong>Día de reunión asignado:</strong> ${datos.assignedRestDay}</p>
+          <p><strong>Día de reunión solicitado:</strong> ${datos.requestedRestDay}</p>
+        `;
+    case "Tiempo extra":
+      return `<p><strong>Horas extra:</strong> ${datos.hours}</p>
+              <p><strong>Entrada:</strong> ${datos.entryTime}</p>
+              <p><strong>Salida:</strong> ${datos.exitTime}</p>`;
+
+    default:
+      return `<p style="color:gray">Sin detalles específicos para este tipo de movimiento.</p>`;
+  }
+}
+
 
 // Crear movimiento
 app.post("/api/movimientos", (req, res) => {
@@ -1268,6 +1372,8 @@ app.get('/api/movimientos/mios/:num_empleado', (req, res) => {
       mp.estatus AS estatus_movimiento,
       mp.fecha_solicitud,
       mp.nivel_aprobacion,
+      mp.datos_json,
+      mp.comentarios,
       (
         SELECT GROUP_CONCAT(CONCAT_WS(' - ', am.orden, am.estatus) ORDER BY am.orden ASC)
         FROM aprobaciones_movimientos am
