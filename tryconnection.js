@@ -1097,7 +1097,7 @@ function procesarAprobacion(idAprobacion, estatus, nota = null) {
                                 }
 
                                 const { tipo_movimiento, datos_json } = mov;
-                                const datos = JSON.parse(datos_json || "{}");
+                                const datos = typeof datos_json === "string" ? JSON.parse(datos_json) : datos_json;
                                 const htmlExtra = renderDatosHtml(tipo_movimiento, datos);
 
                                 const enlace = `http://api-cursos.192.168.29.40.sslip.io/api/aprobaciones/responder?token=${token_aprobacion}`;
