@@ -415,12 +415,7 @@ app.post('/login', async (req, res) => {
 
     const user = result[0];
 
-    console.log("🔐 Usuario encontrado", user);
-    console.log("🔐 Contraseña enviada:", password);
-    console.log("🔐 Hash en base de datos:", user.password);
-
     const validPassword = await bcrypt.compare(password, user.password);
-    console.log("✅ Resultado de comparación:", validPassword);
 
     if (!validPassword) {
       return res.status(401).json({ success: false, message: 'Contraseña incorrecta' });
@@ -1359,7 +1354,7 @@ app.post("/api/movimientos", (req, res) => {
           
                   if (result.length > 0) {
                     const { email, token_aprobacion, name } = result[0];
-                    const enlace = `http:///api/aprobaciones/responder?token=${token_aprobacion}`;
+                    const enlace = `http://api-cursos.192.168.29.40.sslip.io/api/aprobaciones/responder?token=${token_aprobacion}`;
           
                     db.query(
                       `SELECT tipo_movimiento, datos_json
