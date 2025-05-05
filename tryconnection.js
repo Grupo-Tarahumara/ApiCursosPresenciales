@@ -849,15 +849,18 @@ app.post('/vacaciones', async (req, res) => {
             <p style="color: #555555; font-size: 16px;">
               Por favor, elige una de las siguientes opciones para proceder:
             </p>
-
+            
+            <p style="color: #555555; font-size: 16px; line-height: 1.6;">
+              <strong>Comentarios:</strong> ${comentarios || "Ninguno"}
+            </p>
             <!-- Botones de acción -->
             <div style="text-align: center; margin: 30px 0;">
               <a href="${enlace}&accion=aprobado"
-                style="background-color: #28a745; color: white; padding: 14px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; margin-right: 12px;">
+                style="background-color: #28a745; color: white; padding: 10px 16px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; margin-right: 12px;">
                 ✅ Aprobar
               </a>
               <a href="${enlace}&accion=rechazado"
-                style="background-color: #dc3545; color: white; padding: 14px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
+                style="background-color: #dc3545; color: white; padding: 10px 16px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
                 ❌ Rechazar
               </a>
             </div>
@@ -1145,7 +1148,7 @@ function procesarAprobacion(idAprobacion, estatus, nota = null) {
 
                             // Obtener datos adicionales del movimiento
                             db.query(
-                              `SELECT tipo_movimiento, datos_json
+                              `SELECT tipo_movimiento, datos_json, comentarios
                                FROM movimientos_personal
                                WHERE idMovimiento = ?`,
                               [movimientoId],
@@ -1155,7 +1158,7 @@ function procesarAprobacion(idAprobacion, estatus, nota = null) {
                                   return db.rollback(() => reject(err));
                                 }
 
-                                const { tipo_movimiento, datos_json } = mov;
+                                const { tipo_movimiento, datos_json, comentarios } = mov;
                                 const datos = typeof datos_json === "string" ? JSON.parse(datos_json) : datos_json;
                                 const htmlExtra = renderDatosHtml(tipo_movimiento, datos);
 
@@ -1178,13 +1181,17 @@ function procesarAprobacion(idAprobacion, estatus, nota = null) {
                                         <div style="margin-top: 16px; font-size: 15px; color: #333;">
                                           ${htmlExtra}
                                         </div>
+                                        
+                                        <p style="color: #555555; font-size: 16px; line-height: 1.6;">
+                                          <strong>Comentarios:</strong> ${comentarios || "Ninguno"}
+                                        </p>
                                         <div style="text-align: center; margin: 30px 0;">
                                           <a href="${enlace}&accion=aprobado"
-                                            style="background-color: #28a745; color: white; padding: 14px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; margin-right: 12px;">
+                                            style="background-color: #28a745; color: white; padding: 10px 16px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; margin-right: 12px;">
                                             ✅ Aprobar
                                           </a>
                                           <a href="${enlace}&accion=rechazado"
-                                            style="background-color: #dc3545; color: white; padding: 14px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
+                                            style="background-color: #dc3545; color: white; padding: 10px 16px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
                                             ❌ Rechazar
                                           </a>
                                         </div>
@@ -1416,7 +1423,7 @@ app.post("/api/movimientos", (req, res) => {
                     const enlace = `http://api-cursos.192.168.29.40.sslip.io/api/aprobaciones/responder?token=${token_aprobacion}`;
           
                     db.query(
-                      `SELECT tipo_movimiento, datos_json
+                      `SELECT tipo_movimiento, datos_json, comentarios
                        FROM movimientos_personal
                        WHERE idMovimiento = ?`,
                       [idMovimiento],
@@ -1426,7 +1433,7 @@ app.post("/api/movimientos", (req, res) => {
                           return;
                         }
           
-                        const { tipo_movimiento, datos_json } = mov;
+                        const { tipo_movimiento, datos_json, comentarios } = mov;
                         const datos = typeof datos_json === "string" ? JSON.parse(datos_json) : datos_json;
                         const htmlExtra = renderDatosHtml(tipo_movimiento, datos);
           
@@ -1447,13 +1454,16 @@ app.post("/api/movimientos", (req, res) => {
                                 <div style="margin-top: 16px; font-size: 15px; color: #333;">
                                   ${htmlExtra}
                                 </div>
+                                <p style="color: #555555; font-size: 16px; line-height: 1.6;">
+                                  <strong>Comentarios:</strong> ${comentarios || "Ninguno"}
+                                </p>
                                 <div style="text-align: center; margin: 30px 0;">
                                   <a href="${enlace}&accion=aprobado"
-                                    style="background-color: #28a745; color: white; padding: 14px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; margin-right: 12px;">
+                                    style="background-color: #28a745; color: white; padding: 10px 16px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; margin-right: 12px;">
                                     ✅ Aprobar
                                   </a>
                                   <a href="${enlace}&accion=rechazado"
-                                    style="background-color: #dc3545; color: white; padding: 14px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
+                                    style="background-color: #dc3545; color: white; padding: 10px 16px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
                                     ❌ Rechazar
                                   </a>
                                 </div>
