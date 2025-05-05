@@ -110,87 +110,85 @@ app.get('/', (req, res) => {
 });
 
 app.post('/agregarUsuario', (req, res) => {
-  
-  var { name, email, password, num_empleado } = req.body;
-  password = bcrypt.hashSync(password, 10);
+  const { name, email, password, num_empleado } = req.body;
 
-  // Verifica si los datos se están recibiendo correctamente
-  console.log("Datos recibidos:", req.body);
- 
-  const query = `INSERT INTO users (name, email, password, status, num_empleado)
-                 VALUES ('${name}', '${email}', '${password}', 'Activo', '${num_empleado}')`;
- 
-  try {
-    db.query(query, (err, result) => {
-      if (err) {
-        console.error("Error al insertar el usuario:", err);
-        res.status(500).send('Error en la base de datos');
-      } else {
-        res.json(result); // Devuelve el resultado si la inserción fue exitosa
-      }
-    });
-  } catch (e) {
-    console.error("Error en el servidor:", e);
-    res.status(500).send('Error en el servidor');
+  if (!password) {
+    return res.status(400).json({ error: 'La contraseña es obligatoria' });
   }
-} );
+
+  const hashedPassword = bcrypt.hashSync(password, 10);
+  const query = `INSERT INTO users (name, email, password, status, num_empleado)
+                 VALUES (?, ?, ?, 'Activo', ?)`;
+  const params = [name, email, hashedPassword, num_empleado];
+
+  db.query(query, params, (err, result) => {
+    if (err) {
+      console.error("❌ Error al insertar el usuario:", err);
+      res.status(500).send('Error en la base de datos');
+    } else {
+      res.json(result);
+    }
+  });
+});
+
 
 app.get('/usuarios', (req, res) => {
-  const query = `SELECT * FROM users`;
- 
+  const query = `SELECT * FROM users WHERE status != 'Inactivo'`;
+
   db.query(query, (err, results) => {
     if (err) {
-      res.status(500).send('Error fetching data');
-      return;
+      console.error("❌ Error al obtener usuarios:", err);
+      return res.status(500).send('Error al obtener los datos');
     }
     res.json(results);
   });
 });
 
+
 app.put('/actualizarUsuario', (req, res) => {
-  var { id, name, email, password, num_empleado } = req.body;
-  let query; // Declarar la variable antes de los bloques if
+  const { id, name, email, password, num_empleado } = req.body;
+
+  let query;
+  let params;
 
   if (password) {
-    password = bcrypt.hashSync(password, 10);
-    query = `UPDATE users SET name = '${name}', email = '${email}', password = '${password}', num_empleado = '${num_empleado}' WHERE id = ${id}`;
+    const hashedPassword = bcrypt.hashSync(password, 10);
+    query = `UPDATE users SET name = ?, email = ?, password = ?, num_empleado = ? WHERE id = ?`;
+    params = [name, email, hashedPassword, num_empleado, id];
   } else {
-    query = `UPDATE users SET name = '${name}', email = '${email}', num_empleado = '${num_empleado}' WHERE id = ${id}`;
+    query = `UPDATE users SET name = ?, email = ?, num_empleado = ? WHERE id = ?`;
+    params = [name, email, num_empleado, id];
   }
-  
-  try {
-    db.query(query, (err, result) => {
-      if (err) {
-        console.error("Error al actualizar el usuario:", err);
-        res.status(500).send('Error en la base de datos');
-      } else {
-        res.json(result);
-      }
-    });
-  } catch (e) {
-    console.error("Error en el servidor:", e);
-    res.status(500).send('Error en el servidor');
-  }
-});
 
-app.post('/eliminarUsuario', (req, res) => {
-  const { id } = req.body;
- 
-  const query = `UPDATE users
-                 SET status = 'Inactivo'
-                 WHERE id = ${id}`;
-
-  db.query(query, (err, result) => {
+  db.query(query, params, (err, result) => {
     if (err) {
-      console.error("Error al eliminar el usuario:", err);
+      console.error("❌ Error al actualizar el usuario:", err);
       res.status(500).send('Error en la base de datos');
     } else {
       res.json(result);
     }
+  });
+});
+
+
+app.post('/eliminarUsuario', (req, res) => {
+  const { id } = req.body;
+
+  if (!id) {
+    return res.status(400).json({ error: 'ID del usuario requerido' });
   }
-  );
-}
-);
+
+  const query = `UPDATE users SET status = 'Inactivo' WHERE id = ?`;
+
+  db.query(query, [id], (err, result) => {
+    if (err) {
+      console.error("❌ Error al eliminar (desactivar) el usuario:", err);
+      res.status(500).send('Error en la base de datos');
+    } else {
+      res.json(result);
+    }
+  });
+});
 
 app.post('/actualizarCurso', (req, res) => {
   const { id_course,title, description, tutor, progress} = req.body;
@@ -391,40 +389,45 @@ app.post('/updateCargaMasiva', async (req, res) => {
 
 app.post('/login', async (req, res) => {
   const { email, num_empleado, password } = req.body;
+
+  if ((!email && !num_empleado) || !password) {
+    return res.status(400).json({
+      success: false,
+      message: 'Correo o número de empleado y contraseña son requeridos'
+    });
+  }
+
+  const query = email
+    ? `SELECT * FROM users WHERE email = ? AND status = 'Activo'`
+    : `SELECT * FROM users WHERE num_empleado = ? AND status = 'Activo'`;
+
   const identifier = email || num_empleado;
 
-  console.log(`[LOG] Solicitud de inicio de sesión recibida: ${identifier}`);
+  db.query(query, [identifier], async (err, result) => {
+    if (err) {
+      console.error("[LOG] Error al buscar el usuario:", err);
+      return res.status(500).json({ success: false, message: 'Error en la base de datos' });
+    }
 
-  if (!identifier || !password) {
-    return res.status(400).json({ success: false, message: 'Correo o número de empleado y contraseña son requeridos' });
-  }
+    if (result.length === 0) {
+      return res.status(401).json({ success: false, message: 'Usuario no encontrado' });
+    }
 
-  try {
-    const query = `SELECT * FROM users WHERE email = ? OR num_empleado = ?`;
+    const user = result[0];
 
-    db.query(query, [identifier, identifier], async (err, result) => {
-      if (err) {
-        console.error("[LOG] Error al buscar el usuario:", err);
-        return res.status(500).json({ success: false, message: 'Error en la base de datos' });
-      }
+    console.log("🔐 Usuario encontrado", user);
+    console.log("🔐 Contraseña enviada:", password);
+    console.log("🔐 Hash en base de datos:", user.password);
 
-      if (result.length === 0) {
-        return res.status(401).json({ success: false, message: 'Usuario no encontrado' });
-      }
+    const validPassword = await bcrypt.compare(password, user.password);
+    console.log("✅ Resultado de comparación:", validPassword);
 
-      const user = result[0];
-      const validPassword = await bcrypt.compare(password, user.password);
+    if (!validPassword) {
+      return res.status(401).json({ success: false, message: 'Contraseña incorrecta' });
+    }
 
-      if (!validPassword) {
-        return res.status(401).json({ success: false, message: 'Contraseña incorrecta' });
-      }
-
-      return res.json({ success: true, message: 'Inicio de sesión exitoso', data: user });
-    });
-  } catch (e) {
-    console.error('[LOG] Error en el servidor:', e);
-    res.status(500).json({ success: false, message: 'Error en el servidor' });
-  }
+    return res.json({ success: true, message: 'Inicio de sesión exitoso', data: user });
+  });
 });
 
 //Blog part
@@ -740,6 +743,9 @@ app.delete('/comentarios/:id', (req, res) => {
     }
   });
 });
+
+
+//Movimientos de Personal
 
 // Vacaciones
 app.post('/vacaciones', async (req, res) => {
@@ -1325,7 +1331,7 @@ app.post("/api/movimientos", (req, res) => {
                 res.status(500).json({ success: false, message: "Error insertando aprobadores" });
               });
             }
-
+          
             // Finalizar la transacción exitosamente
             db.commit((err) => {
               if (err) {
@@ -1334,15 +1340,89 @@ app.post("/api/movimientos", (req, res) => {
                   res.status(500).json({ success: false, message: "Error al guardar movimiento" });
                 });
               }
-
+          
               console.log("✅ Transacción completada correctamente");
               res.json({ success: true, idMovimiento });
+          
+              // Aquí es donde DEBES enviar el correo al primer aprobador
+              db.query(
+                `SELECT a.id_aprobador, u.email, a.token_aprobacion, u.name
+                 FROM aprobaciones_movimientos a
+                 JOIN users u ON a.id_aprobador = u.num_empleado
+                 WHERE a.idMovimiento = ? AND a.orden = 1`,
+                [idMovimiento],
+                async (err, result) => {
+                  if (err) {
+                    console.error('❌ Error obteniendo primer aprobador:', err);
+                    return;
+                  }
+          
+                  if (result.length > 0) {
+                    const { email, token_aprobacion, name } = result[0];
+                    const enlace = `http:///api/aprobaciones/responder?token=${token_aprobacion}`;
+          
+                    db.query(
+                      `SELECT tipo_movimiento, datos_json
+                       FROM movimientos_personal
+                       WHERE idMovimiento = ?`,
+                      [idMovimiento],
+                      async (err, [mov]) => {
+                        if (err) {
+                          console.error("❌ Error obteniendo datos del movimiento:", err);
+                          return;
+                        }
+          
+                        const { tipo_movimiento, datos_json } = mov;
+                        const datos = typeof datos_json === "string" ? JSON.parse(datos_json) : datos_json;
+                        const htmlExtra = renderDatosHtml(tipo_movimiento, datos);
+          
+                        try {
+                          await enviarCorreo(
+                            email,
+                            "Nueva solicitud de movimiento de personal",
+                            `
+                            <div style="font-family: 'Segoe UI', sans-serif; background-color: #f4f4f7; padding: 40px;">
+                              <div style="max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; padding: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+                                <div style="text-align: center;">
+                                  <img src="https://drive.google.com/uc?export=view&id=1V-r6CDerFoilWIRxwWcwTmjV6BJOexvS" />
+                                  <h2 style="color: #333333;">¡Hola, ${name}!</h2>
+                                </div>
+                                <p style="color: #555555; font-size: 16px; line-height: 1.6;">
+                                  Se ha generado una nueva <strong>solicitud de movimiento de personal</strong> tipo <strong>${tipo_movimiento}</strong> que requiere tu revisión.
+                                </p>
+                                <div style="margin-top: 16px; font-size: 15px; color: #333;">
+                                  ${htmlExtra}
+                                </div>
+                                <div style="text-align: center; margin: 30px 0;">
+                                  <a href="${enlace}&accion=aprobado"
+                                    style="background-color: #28a745; color: white; padding: 14px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; margin-right: 12px;">
+                                    ✅ Aprobar
+                                  </a>
+                                  <a href="${enlace}&accion=rechazado"
+                                    style="background-color: #dc3545; color: white; padding: 14px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
+                                    ❌ Rechazar
+                                  </a>
+                                </div>
+                                <p style="color: #777777; font-size: 14px; line-height: 1.5;">
+                                  Este mensaje ha sido enviado automáticamente por el sistema de recursos humanos de <strong>Grupo Tarahumara</strong>.
+                                </p>
+                              </div>
+                            </div>
+                            `
+                          );
+                          console.log("📧 Correo enviado al primer aprobador:", email);
+                        } catch (correoError) {
+                          console.error("❌ Error enviando correo al primer aprobador:", correoError);
+                        }
+                      }
+                    );
+                  }
+                }
+              );
             });
           });
-
         } else {
-          console.warn("⚠️ No se insertaron aprobadores porque no había");
-          // Si no hay aprobadores, finalizar la transacción igual
+          console.warn("⚠️ No se encontraron aprobadores para insertar.");
           db.commit((err) => {
             if (err) {
               console.error("❌ Error en commit:", err);
@@ -1350,12 +1430,10 @@ app.post("/api/movimientos", (req, res) => {
                 res.status(500).json({ success: false, message: "Error al guardar movimiento" });
               });
             }
-
-            console.log("✅ Transacción completada correctamente (sin aprobadores)");
             res.json({ success: true, idMovimiento });
           });
         }
-      }
+      },
     );
   });
 });
