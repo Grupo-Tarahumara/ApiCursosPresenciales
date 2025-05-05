@@ -955,7 +955,7 @@ app.get("/api/aprobaciones", (req, res) => {
   });
 });
 
-
+let datosSolicitante = null;
 function procesarAprobacion(idAprobacion, estatus, nota = null) {
   return new Promise((resolve, reject) => {
     db.beginTransaction((err) => {
@@ -990,33 +990,62 @@ function procesarAprobacion(idAprobacion, estatus, nota = null) {
 
               const aprobacion = result[0];
               const movimientoId = aprobacion.idMovimiento;
-
               if (estatus === "rechazado") {
                 console.log("🚫 Rechazando movimiento...");
-
+              
+                // Obtener datos del solicitante ANTES del commit
                 db.query(
-                  `UPDATE movimientos_personal
-                   SET estatus = 'rechazado', rechazado_por = ?, nota_rechazo = ?
-                   WHERE idMovimiento = ?`,
-                  [aprobacion.id_aprobador, nota, movimientoId],
-                  (err) => {
-                    if (err) {
-                      console.error('❌ Error rechazando movimiento:', err);
-                      return db.rollback(() => reject(err));
-                    }
-
-                    db.commit((err) => {
-                      if (err) {
-                        console.error('❌ Error en commit:', err);
-                        return db.rollback(() => reject(err));
+                  `SELECT m.num_empleado, u.email, u.name
+                   FROM movimientos_personal m
+                   JOIN users u ON m.num_empleado = u.num_empleado
+                   WHERE m.idMovimiento = ?`,
+                  [movimientoId],
+                  (err, [solicitante]) => {
+                    if (!err && solicitante) datosSolicitante = solicitante; // guardamos para después
+              
+                    db.query(
+                      `UPDATE movimientos_personal
+                       SET estatus = 'rechazado', rechazado_por = ?, nota_rechazo = ?
+                       WHERE idMovimiento = ?`,
+                      [aprobacion.id_aprobador, nota, movimientoId],
+                      (err) => {
+                        if (err) return db.rollback(() => reject(err));
+              
+                        db.commit(async (err) => {
+                          if (err) return db.rollback(() => reject(err));
+                          console.log('✅ Movimiento rechazado y transacción finalizada');
+              
+                          // Enviamos el correo después del commit
+                          if (datosSolicitante) {
+                            try {
+                              await enviarCorreo(
+                                datosSolicitante.email,
+                                "Movimiento de personal rechazado",
+                                `
+                                <div style="font-family: 'Segoe UI', sans-serif; padding: 40px;">
+                                  <h2>🔴 Tu solicitud de movimiento fue rechazada</h2>
+                                  <p>Estimado(a) ${datosSolicitante.name},</p>
+                                  <p>Tu movimiento fue <strong>rechazado</strong> por el aprobador <strong>${aprobacion.id_aprobador}</strong>.</p>
+                                  <p><strong>Motivo:</strong> ${nota}</p>
+                                  <p style="color:gray;">Por favor, contacta a tu supervisor si necesitas más información.</p>
+                                </div>
+                                `
+                              );
+                              console.log("📧 Notificación enviada al solicitante por rechazo.");
+                            } catch (error) {
+                              console.error("❌ Error enviando notificación de rechazo:", error);
+                            }
+                          }
+              
+                          resolve();
+                        });
                       }
-                      console.log('✅ Movimiento rechazado y transacción finalizada');
-                      resolve();
-                    });
+                    );
                   }
                 );
+              }
 
-              } else {
+              else {
                 console.log("✅ Aprobación parcial, buscando siguientes aprobadores...");
 
                 db.query(
@@ -1034,28 +1063,58 @@ function procesarAprobacion(idAprobacion, estatus, nota = null) {
 
                     if (pendientes === 0) {
                       console.log("🎉 Todos aprobaron. Finalizando movimiento.");
-
+                    
                       db.query(
-                        `UPDATE movimientos_personal
-                         SET estatus = 'aprobado'
-                         WHERE idMovimiento = ?`,
+                        `UPDATE movimientos_personal SET estatus = 'aprobado' WHERE idMovimiento = ?`,
                         [movimientoId],
                         (err) => {
-                          if (err) {
-                            console.error('❌ Error actualizando movimiento aprobado:', err);
-                            return db.rollback(() => reject(err));
-                          }
-
-                          db.commit((err) => {
-                            if (err) {
-                              console.error('❌ Error en commit:', err);
-                              return db.rollback(() => reject(err));
+                          if (err) return db.rollback(() => reject(err));
+                    
+                          // 🔐 Preparamos los datos para enviar correo después
+                          db.query(
+                            `SELECT m.num_empleado, u.email, u.name
+                             FROM movimientos_personal m
+                             JOIN users u ON m.num_empleado = u.num_empleado
+                             WHERE m.idMovimiento = ?`,
+                            [movimientoId],
+                            (err, [solicitante]) => {
+                              if (err || !solicitante) {
+                                console.warn("⚠️ No se pudo obtener info del solicitante.");
+                                return db.commit((err) => {
+                                  if (err) return db.rollback(() => reject(err));
+                                  resolve(); // terminamos aunque no haya correo
+                                });
+                              }
+                    
+                              db.commit(async (err) => {
+                                if (err) return db.rollback(() => reject(err));
+                                console.log('✅ Movimiento aprobado y transacción finalizada');
+                    
+                                // 📧 Enviamos correo fuera del scope de transacción
+                                try {
+                                  await enviarCorreo(
+                                    solicitante.email,
+                                    "✅ Movimiento aprobado",
+                                    `
+                                    <div style="font-family: 'Segoe UI', sans-serif; padding: 40px;">
+                                      <h2>✅ Movimiento aprobado</h2>
+                                      <p>Hola ${solicitante.name},</p>
+                                      <p>Tu solicitud ha sido <strong>aprobada por todos</strong>.</p>
+                                    </div>
+                                    `
+                                  );
+                                  console.log("📧 Correo enviado al solicitante.");
+                                } catch (err) {
+                                  console.error("❌ Error enviando correo de aprobación:", err);
+                                }
+                    
+                                resolve();
+                              });
                             }
-                            console.log('✅ Movimiento aprobado y transacción finalizada');
-                            resolve();
-                          });
+                          );
                         }
                       );
+                    
 
                     } else {
                       console.log("🔎 Hay pendientes, notificando siguiente aprobador...");
@@ -1512,27 +1571,55 @@ app.get("/api/aprobaciones/responder", (req, res) => {
     return res.status(400).send("Acción inválida.");
   }
 
-  db.query(`SELECT idAprobacion FROM aprobaciones_movimientos WHERE token_aprobacion = ?`, [token], async (err, rows) => {
-    if (err) {
-      console.error("❌ Error al buscar token:", err);
-      return res.status(500).send("Error interno del servidor.");
-    }
+  db.query(
+    `SELECT idAprobacion, estatus
+     FROM aprobaciones_movimientos
+     WHERE token_aprobacion = ?`,
+    [token],
+    async (err, rows) => {
+      if (err) {
+        console.error("❌ Error al buscar token:", err);
+        return res.status(500).send("Error interno del servidor.");
+      }
 
-    if (!rows || rows.length === 0) {
-      return res.status(404).send("Token inválido o expirado.");
-    }
+      if (!rows || rows.length === 0) {
+        return res.status(404).send("❌ Token inválido o ya utilizado.");
+      }
 
-    const aprobacion = rows[0];
+      const aprobacion = rows[0];
 
-    try {
-      await procesarAprobacion(aprobacion.idAprobacion, accion, "[Respuesta vía correo]");
-      res.send("✅ Tu respuesta ha sido registrada correctamente. ¡Gracias!");
-    } catch (error) {
-      console.error("❌ Error al procesar respuesta por token:", error);
-      res.status(500).send("Error interno del servidor.");
+      // Validar que la aprobación esté pendiente
+      if (aprobacion.estatus !== "pendiente") {
+        return res.send("⚠️ Esta solicitud ya fue respondida anteriormente.");
+      }
+
+      try {
+        // Procesar la aprobación (también actualiza el estatus y guarda nota)
+        await procesarAprobacion(aprobacion.idAprobacion, accion, "[Respuesta vía correo]");
+
+        // Inhabilitar el token para que no pueda usarse de nuevo
+        db.query(
+          `UPDATE aprobaciones_movimientos
+           SET token_aprobacion = NULL
+           WHERE idAprobacion = ?`,
+          [aprobacion.idAprobacion],
+          (err) => {
+            if (err) {
+              console.error("⚠️ Error anulando token tras aprobar:", err);
+              // No detenemos la respuesta al usuario, solo lo logueamos
+            }
+          }
+        );
+
+        res.send("✅ Tu respuesta ha sido registrada correctamente. ¡Gracias!");
+      } catch (error) {
+        console.error("❌ Error al procesar respuesta por token:", error);
+        res.status(500).send("Error interno del servidor.");
+      }
     }
-  });
+  );
 });
+
 
 //open port 
 app.listen(port, () => {
