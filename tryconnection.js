@@ -19,9 +19,9 @@ const port = process.env.SERVER_PORT || 3041;
 
 app.use(cors());
 app.use(express.json());
+app.use('/public', express.static('public'));
 
-// 🖼️ Servir archivos estáticos desde la carpeta /public
-app.use(express.static(path.join(__dirname, 'public')));
+
 //dates to do a connection
 
 const returnConnection = () => {
@@ -833,12 +833,28 @@ app.post('/vacaciones', async (req, res) => {
         primerAprobador.email,
         "Nueva solicitud de vacaciones",
         `
-         <div style="font-family: 'Segoe UI', sans-serif; background-color: #f4f4f7; padding: 40px;">
+        <div style="font-family: 'Segoe UI', sans-serif; background-color: #f4f4f7; padding: 40px;">
+          <style>
+            @media only screen and (max-width: 768px) {
+              .btn-container {
+                display: flex !important;
+                flex-direction: column !important;
+                align-items: center !important;
+              }
+              .btn-container a {
+                display: block !important;
+                width: 80% !important;
+                margin: 12px 0 !important;
+                text-align: center !important;
+              }
+            }
+          </style>
+
           <div style="max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; padding: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
             
             <!-- Encabezado con logo y saludo -->
             <div style="text-align: center;">
-              <img src="https://drive.google.com/uc?export=view&id=1V-r6CDerFoilWIRxwWcwTmjV6BJOexvS" />
+              <img src="https://custom-images.strikinglycdn.com/res/hrscywv4p/image/upload/c_limit,fl_lossy,h_300,w_300,f_auto,q_auto/6088316/314367_858588.png" />
               <h2 style="color: #333333;">¡Hola, ${primerAprobador.name}!</h2>
             </div>
 
@@ -853,14 +869,15 @@ app.post('/vacaciones', async (req, res) => {
             <p style="color: #555555; font-size: 16px; line-height: 1.6;">
               <strong>Comentarios:</strong> ${comentarios || "Ninguno"}
             </p>
+
             <!-- Botones de acción -->
-            <div style="text-align: center; margin: 30px 0;">
+            <div class="btn-container" style="text-align: center; margin: 30px 0;">
               <a href="${enlace}&accion=aprobado"
-                style="background-color: #28a745; color: white; padding: 10px 16px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; margin-right: 12px;">
+                style="background-color: #28a745; color: white; padding: 10px 16px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; margin: 8px;">
                 ✅ Aprobar
               </a>
               <a href="${enlace}&accion=rechazado"
-                style="background-color: #dc3545; color: white; padding: 10px 16px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
+                style="background-color: #dc3545; color: white; padding: 10px 16px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; margin: 8px;">
                 ❌ Rechazar
               </a>
             </div>
@@ -1169,37 +1186,67 @@ function procesarAprobacion(idAprobacion, estatus, nota = null) {
                                     email,
                                     "Nueva solicitud de movimiento de personal",
                                     `
-                                    <div style="font-family: 'Segoe UI', sans-serif; background-color: #f4f4f7; padding: 40px;">
-                                      <div style="max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; padding: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
-                                        <div style="text-align: center;">
-                                          <img src="https://drive.google.com/uc?export=view&id=1V-r6CDerFoilWIRxwWcwTmjV6BJOexvS" />
-                                          <h2 style="color: #333333;">¡Hola, ${name}!</h2>
-                                        </div>
-                                        <p style="color: #555555; font-size: 16px; line-height: 1.6;">
-                                          Se ha generado una nueva <strong>solicitud de movimiento de personal</strong> tipo <strong>${tipo_movimiento}</strong> que requiere tu revisión.
-                                        </p>
-                                        <div style="margin-top: 16px; font-size: 15px; color: #333;">
-                                          ${htmlExtra}
-                                        </div>
-                                        
-                                        <p style="color: #555555; font-size: 16px; line-height: 1.6;">
-                                          <strong>Comentarios:</strong> ${comentarios || "Ninguno"}
-                                        </p>
-                                        <div style="text-align: center; margin: 30px 0;">
-                                          <a href="${enlace}&accion=aprobado"
-                                            style="background-color: #28a745; color: white; padding: 10px 16px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; margin-right: 12px;">
-                                            ✅ Aprobar
-                                          </a>
-                                          <a href="${enlace}&accion=rechazado"
-                                            style="background-color: #dc3545; color: white; padding: 10px 16px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
-                                            ❌ Rechazar
-                                          </a>
-                                        </div>
-                                        <p style="color: #777777; font-size: 14px; line-height: 1.5;">
-                                          Este mensaje ha sido enviado automáticamente por el sistema de recursos humanos de <strong>Grupo Tarahumara</strong>.
-                                        </p>
-                                      </div>
-                                    </div>
+                              <div style="font-family: 'Segoe UI', sans-serif; background-color: #f4f4f7; padding: 40px;">
+                                <style>
+                                  .btn-container {
+                                    display: flex;
+                                    flex-wrap: wrap;
+                                    justify-content: center;
+                                    gap: 12px;
+                                  }
+                                  .btn-container a {
+                                    display: inline-block;
+                                    min-width: 160px;
+                                    margin: 8px;
+                                    text-align: center;
+                                  }
+
+                                  /* Fuerza columna vertical cuando el contenedor es estrecho o se corta el botón */
+                                  @media only screen and (max-width: 768px) {
+                                    .btn-container {
+                                      flex-direction: column !important;
+                                      align-items: center !important;
+                                    }
+                                    .btn-container a {
+                                      width: 80% !important;
+                                      margin: 12px 0 !important;
+                                    }
+                                  }
+                                </style>
+
+                                <div style="max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; padding: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+                                  <div style="text-align: center;">
+                                    <img src="https://custom-images.strikinglycdn.com/res/hrscywv4p/image/upload/c_limit,fl_lossy,h_300,w_300,f_auto,q_auto/6088316/314367_858588.png" />
+                                    <h2 style="color: #333333;">¡Hola, ${name}!</h2>
+                                  </div>
+
+                                  <p style="color: #555555; font-size: 16px; line-height: 1.6;">
+                                    Se ha generado una nueva <strong>solicitud de movimiento de personal</strong> tipo <strong>${tipo_movimiento}</strong> que requiere tu revisión.
+                                  </p>
+
+                                  <div style="margin-top: 16px; font-size: 15px; color: #333;">
+                                    ${htmlExtra}
+                                  </div>
+
+                                  <p style="color: #555555; font-size: 16px; line-height: 1.6;">
+                                    <strong>Comentarios:</strong> ${comentarios || "Ninguno"}
+                                  </p>
+
+                                  <div class="btn-container" style="margin: 30px 0;">
+                                    <a href="${enlace}&accion=aprobado"
+                                      style="background-color: #28a745; color: white; padding: 10px 16px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
+                                      ✅ Aprobar
+                                    </a>
+                                    <a href="${enlace}&accion=rechazado"
+                                      style="background-color: #dc3545; color: white; padding: 10px 16px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
+                                      ❌ Rechazar
+                                    </a>
+                                  </div>
+                                  <p style="color: #777777; font-size: 14px; line-height: 1.5;">
+                                    Este mensaje ha sido enviado automáticamente por el sistema de recursos humanos de <strong>Grupo Tarahumara</strong>.
+                                  </p>
+                                </div>
+                              </div>
                                     `
                                   );
                                 } catch (correoError) {
@@ -1442,36 +1489,67 @@ app.post("/api/movimientos", (req, res) => {
                             email,
                             "Nueva solicitud de movimiento de personal",
                             `
-                            <div style="font-family: 'Segoe UI', sans-serif; background-color: #f4f4f7; padding: 40px;">
-                              <div style="max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; padding: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
-                                <div style="text-align: center;">
-                                  <img src="https://drive.google.com/uc?export=view&id=1V-r6CDerFoilWIRxwWcwTmjV6BJOexvS" />
-                                  <h2 style="color: #333333;">¡Hola, ${name}!</h2>
+                              <div style="font-family: 'Segoe UI', sans-serif; background-color: #f4f4f7; padding: 40px;">
+                                <style>
+                                  .btn-container {
+                                    display: flex;
+                                    flex-wrap: wrap;
+                                    justify-content: center;
+                                    gap: 12px;
+                                  }
+                                  .btn-container a {
+                                    display: inline-block;
+                                    min-width: 160px;
+                                    margin: 8px;
+                                    text-align: center;
+                                  }
+
+                                  /* Fuerza columna vertical cuando el contenedor es estrecho o se corta el botón */
+                                  @media only screen and (max-width: 768px) {
+                                    .btn-container {
+                                      flex-direction: column !important;
+                                      align-items: center !important;
+                                    }
+                                    .btn-container a {
+                                      width: 80% !important;
+                                      margin: 12px 0 !important;
+                                    }
+                                  }
+                                </style>
+
+                                <div style="max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; padding: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+                                  <div style="text-align: center;">
+                                    <img src="https://custom-images.strikinglycdn.com/res/hrscywv4p/image/upload/c_limit,fl_lossy,h_300,w_300,f_auto,q_auto/6088316/314367_858588.png" />
+                                    <h2 style="color: #333333;">¡Hola, ${name}!</h2>
+                                  </div>
+
+                                  <p style="color: #555555; font-size: 16px; line-height: 1.6;">
+                                    Se ha generado una nueva <strong>solicitud de movimiento de personal</strong> tipo <strong>${tipo_movimiento}</strong> que requiere tu revisión.
+                                  </p>
+
+                                  <div style="margin-top: 16px; font-size: 15px; color: #333;">
+                                    ${htmlExtra}
+                                  </div>
+
+                                  <p style="color: #555555; font-size: 16px; line-height: 1.6;">
+                                    <strong>Comentarios:</strong> ${comentarios || "Ninguno"}
+                                  </p>
+
+                                  <div class="btn-container" style="margin: 30px 0;">
+                                    <a href="${enlace}&accion=aprobado"
+                                      style="background-color: #28a745; color: white; padding: 10px 16px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
+                                      ✅ Aprobar
+                                    </a>
+                                    <a href="${enlace}&accion=rechazado"
+                                      style="background-color: #dc3545; color: white; padding: 10px 16px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
+                                      ❌ Rechazar
+                                    </a>
+                                  </div>
+                                  <p style="color: #777777; font-size: 14px; line-height: 1.5;">
+                                    Este mensaje ha sido enviado automáticamente por el sistema de recursos humanos de <strong>Grupo Tarahumara</strong>.
+                                  </p>
                                 </div>
-                                <p style="color: #555555; font-size: 16px; line-height: 1.6;">
-                                  Se ha generado una nueva <strong>solicitud de movimiento de personal</strong> tipo <strong>${tipo_movimiento}</strong> que requiere tu revisión.
-                                </p>
-                                <div style="margin-top: 16px; font-size: 15px; color: #333;">
-                                  ${htmlExtra}
-                                </div>
-                                <p style="color: #555555; font-size: 16px; line-height: 1.6;">
-                                  <strong>Comentarios:</strong> ${comentarios || "Ninguno"}
-                                </p>
-                                <div style="text-align: center; margin: 30px 0;">
-                                  <a href="${enlace}&accion=aprobado"
-                                    style="background-color: #28a745; color: white; padding: 10px 16px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; margin-right: 12px;">
-                                    ✅ Aprobar
-                                  </a>
-                                  <a href="${enlace}&accion=rechazado"
-                                    style="background-color: #dc3545; color: white; padding: 10px 16px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
-                                    ❌ Rechazar
-                                  </a>
-                                </div>
-                                <p style="color: #777777; font-size: 14px; line-height: 1.5;">
-                                  Este mensaje ha sido enviado automáticamente por el sistema de recursos humanos de <strong>Grupo Tarahumara</strong>.
-                                </p>
                               </div>
-                            </div>
                             `
                           );
                           console.log("📧 Correo enviado al primer aprobador:", email);
