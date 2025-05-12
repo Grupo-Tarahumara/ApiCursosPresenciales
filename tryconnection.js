@@ -1614,14 +1614,65 @@ app.get('/api/movimientos/mios/:num_empleado', (req, res) => {
   });
 });
 
+app.get('/api/movimientos/requisiciones/:num_empleado', (req, res) => {
+  const { num_empleado } = req.params;
+
+  const query = `
+    SELECT * FROM movimientos_personal mp
+    WHERE mp.num_empleado = ?
+      AND (
+        mp.tipo_movimiento = 'Sustitución'
+        OR mp.tipo_movimiento = 'Nueva Posición'
+        OR mp.tipo_movimiento = 'Aumento Plantilla'
+      )
+    ORDER BY mp.fecha_solicitud DESC
+  `;
+
+  db.query(query, [num_empleado], (err, rows) => {
+    if (err) {
+      console.error('Error al obtener movimientos:', err);
+      return res.status(500).json({ error: 'Error al obtener movimientos' });
+    }
+
+    res.json({ data: rows });
+  });
+});
+
+
 // Obtener movimientos pendientes por aprobador
 app.get("/api/aprobaciones/pendientes/:idAprobador", (req, res) => {
   const { idAprobador } = req.params;
 
-  const query = `SELECT am.idAprobacion, mp.idMovimiento, mp.tipo_movimiento, mp.fecha_incidencia, mp.datos_json, mp.comentarios
-                 FROM aprobaciones_movimientos am
-                 JOIN movimientos_personal mp ON am.idMovimiento = mp.idMovimiento
-                 WHERE am.id_aprobador = ? AND am.estatus = 'pendiente'`;
+  const query = `SELECT 
+  am.idAprobacion,
+  mp.idMovimiento,
+  mp.tipo_movimiento,
+  mp.fecha_incidencia,
+  mp.num_empleado,
+  mp.datos_json,
+  mp.comentarios,
+  am.orden AS orden_actual,
+  
+  -- Aprobaciones anteriores ya aprobadas
+  (
+    SELECT GROUP_CONCAT(CONCAT_WS(' ', am2.orden, am2.estatus, am2.id_aprobador) ORDER BY am2.orden)
+    FROM aprobaciones_movimientos am2
+    WHERE am2.idMovimiento = mp.idMovimiento
+      AND am2.estatus = 'aprobado'
+  ) AS historial_aprobaciones,
+
+  -- Aprobaciones anteriores aún pendientes
+  (
+    SELECT GROUP_CONCAT(CONCAT_WS(' ', am3.orden, am3.estatus, am3.id_aprobador) ORDER BY am3.orden)
+    FROM aprobaciones_movimientos am3
+    WHERE am3.idMovimiento = mp.idMovimiento
+      AND am3.estatus = 'pendiente'
+      AND am3.orden < am.orden
+  ) AS pendientes_previos
+
+FROM aprobaciones_movimientos am
+JOIN movimientos_personal mp ON am.idMovimiento = mp.idMovimiento
+WHERE am.id_aprobador = ? AND am.estatus = 'pendiente'`;
 
   db.query(query, [idAprobador], (err, rows) => {
     if (err) {
