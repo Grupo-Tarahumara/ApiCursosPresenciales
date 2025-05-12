@@ -1581,7 +1581,7 @@ app.post("/api/movimientos", (req, res) => {
 });
 
 // Express
-app.get('/api/movimientos/mios/:num_empleado', (req, res) => {
+app.get('/api/movimientos/mios/:num_empleado', async (req, res) => {
   const { num_empleado } = req.params;
 
   const query = `
@@ -1595,7 +1595,7 @@ app.get('/api/movimientos/mios/:num_empleado', (req, res) => {
       mp.datos_json,
       mp.comentarios,
       (
-        SELECT GROUP_CONCAT(CONCAT_WS(' - ', am.orden, am.estatus) ORDER BY am.orden ASC)
+        SELECT GROUP_CONCAT(CONCAT_WS(' - ', am.id_aprobador, am.estatus) ORDER BY am.orden ASC)
         FROM aprobaciones_movimientos am
         WHERE am.idMovimiento = mp.idMovimiento
       ) AS historial_aprobaciones
@@ -1604,13 +1604,46 @@ app.get('/api/movimientos/mios/:num_empleado', (req, res) => {
     ORDER BY mp.fecha_solicitud DESC
   `;
 
-  db.query(query, [num_empleado], (err, rows) => {
+  db.query(query, [num_empleado], async (err, rows) => {
     if (err) {
       console.error('Error al obtener movimientos:', err);
       return res.status(500).json({ error: 'Error al obtener movimientos' });
     }
 
-    res.json({ data: rows }); // 👈 Te lo regreso limpio
+    // 🔥 Obtener lista de empleados externos
+    let empleadosDb;
+    try {
+      const response = await fetch('http://api-site-intelisis.192.168.29.40.sslip.io/api/movpersonal');
+      const data = await response.json();
+      empleadosDb = data ?? [];
+    } catch (error) {
+      console.error('Error al obtener empleados externos:', error);
+      empleadosDb = [];
+    }
+
+    // 🔁 Enriquecer historial_aprobaciones con nombres
+    const movimientosConNombres = rows.map((mov) => {
+      const historial = mov.historial_aprobaciones?.split(',') ?? [];
+      const historialDetallado = historial.map((item) => {
+        const [id_aprobador, estatus] = item.trim().split(' - ');
+        const emp = empleadosDb.find((e) => e.Personal === id_aprobador);
+        const nombreCompleto = emp
+          ? `${emp.Nombre} ${emp.ApellidoPaterno} ${emp.ApellidoMaterno}`
+          : `Empleado ${id_aprobador}`;
+        return {
+          id_aprobador,
+          estatus,
+          nombre: nombreCompleto,
+        };
+      });
+
+      return {
+        ...mov,
+        historial_aprobaciones_detallado: historialDetallado,
+      };
+    });
+
+    res.json({ data: movimientosConNombres });
   });
 });
 
@@ -1640,47 +1673,84 @@ app.get('/api/movimientos/requisiciones/:num_empleado', (req, res) => {
 
 
 // Obtener movimientos pendientes por aprobador
-app.get("/api/aprobaciones/pendientes/:idAprobador", (req, res) => {
+app.get("/api/aprobaciones/pendientes/:idAprobador", async (req, res) => {
   const { idAprobador } = req.params;
 
   const query = `SELECT 
-  am.idAprobacion,
-  mp.idMovimiento,
-  mp.tipo_movimiento,
-  mp.fecha_incidencia,
-  mp.num_empleado,
-  mp.datos_json,
-  mp.comentarios,
-  am.orden AS orden_actual,
-  
-  -- Aprobaciones anteriores ya aprobadas
-  (
-    SELECT GROUP_CONCAT(CONCAT_WS(' ', am2.orden, am2.estatus, am2.id_aprobador) ORDER BY am2.orden)
-    FROM aprobaciones_movimientos am2
-    WHERE am2.idMovimiento = mp.idMovimiento
-      AND am2.estatus = 'aprobado'
-  ) AS historial_aprobaciones,
+    am.idAprobacion,
+    mp.idMovimiento,
+    mp.tipo_movimiento,
+    mp.fecha_incidencia,
+    mp.num_empleado,
+    mp.datos_json,
+    mp.comentarios,
+    am.orden AS orden_actual,
 
-  -- Aprobaciones anteriores aún pendientes
-  (
-    SELECT GROUP_CONCAT(CONCAT_WS(' ', am3.orden, am3.estatus, am3.id_aprobador) ORDER BY am3.orden)
-    FROM aprobaciones_movimientos am3
-    WHERE am3.idMovimiento = mp.idMovimiento
-      AND am3.estatus = 'pendiente'
-      AND am3.orden < am.orden
-  ) AS pendientes_previos
+    (
+      SELECT GROUP_CONCAT(CONCAT_WS(' ', am2.orden, am2.estatus, am2.id_aprobador) ORDER BY am2.orden)
+      FROM aprobaciones_movimientos am2
+      WHERE am2.idMovimiento = mp.idMovimiento
+        AND am2.estatus = 'aprobado'
+    ) AS historial_aprobaciones,
 
-FROM aprobaciones_movimientos am
-JOIN movimientos_personal mp ON am.idMovimiento = mp.idMovimiento
-WHERE am.id_aprobador = ? AND am.estatus = 'pendiente'`;
+    (
+      SELECT GROUP_CONCAT(CONCAT_WS(' ', am3.orden, am3.estatus, am3.id_aprobador) ORDER BY am3.orden)
+      FROM aprobaciones_movimientos am3
+      WHERE am3.idMovimiento = mp.idMovimiento
+        AND am3.estatus = 'pendiente'
+        AND am3.orden < am.orden
+    ) AS pendientes_previos
 
+  FROM aprobaciones_movimientos am
+  JOIN movimientos_personal mp ON am.idMovimiento = mp.idMovimiento
+  WHERE am.id_aprobador = ? AND am.estatus = 'pendiente'`;
+
+  // Obtener empleados
+  let empleadosDb;
+  try {
+    const response = await fetch("http://api-site-intelisis.192.168.29.40.sslip.io/api/movpersonal");
+    const data = await response.json();
+    empleadosDb = data ?? [];
+  } catch (error) {
+    console.error("❌ Error al obtener empleados externos:", error);
+    empleadosDb = [];
+  }
+
+  // Ejecutar query SQL
   db.query(query, [idAprobador], (err, rows) => {
     if (err) {
       console.error("❌ Error obteniendo movimientos pendientes:", err);
       return res.status(500).json({ success: false, message: "Error al obtener movimientos" });
     }
 
-    res.json({ success: true, movimientos: rows });
+    const parseCampo = (campo) => {
+      if (!campo) return [];
+      return campo.split(',').map((linea) => {
+        const [orden, estatus, id_aprobador] = linea.trim().split(' ');
+        const emp = empleadosDb.find((e) => e.Personal === id_aprobador);
+        const nombre = emp
+          ? `${emp.Nombre} ${emp.ApellidoPaterno} ${emp.ApellidoMaterno}`
+          : `Empleado ${id_aprobador}`;
+        return { orden, estatus, id_aprobador, nombre };
+      });
+    };
+
+    // Enriquecer cada movimiento
+    const enriquecidos = rows.map((mov) => {
+      const solicitante = empleadosDb.find((e) => e.Personal === mov.num_empleado?.toString());
+      const nombreSolicitante = solicitante
+        ? `${solicitante.Nombre} ${solicitante.ApellidoPaterno} ${solicitante.ApellidoMaterno}`
+        : `Empleado ${mov.num_empleado}`;
+
+      return {
+        ...mov,
+        nombre_solicitante: nombreSolicitante,
+        historial_aprobaciones_detallado: parseCampo(mov.historial_aprobaciones),
+        pendientes_previos_detallado: parseCampo(mov.pendientes_previos),
+      };
+    });
+
+    res.json({ success: true, movimientos: enriquecidos });
   });
 });
 
