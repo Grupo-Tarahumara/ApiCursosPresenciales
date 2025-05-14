@@ -7,6 +7,7 @@ import crypto from 'crypto';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
+import { getEmpleadoInfo } from './dbMSSQL.js';
 
 dotenv.config();
 
@@ -80,6 +81,21 @@ app.get('/cursostomados', (req, res) => {
   });
 });
 
+app.post('/api/validarEmpleado', async (req, res) => {
+  const { num_empleado } = req.body;
+
+  if (!num_empleado) {
+    return res.status(400).json({ success: false, message: 'Número de empleado requerido' });
+  }
+
+  const empleado = await getEmpleadoInfo(num_empleado);
+  if (empleado) {
+    return res.json({ success: true, data: empleado });
+  } else {
+    return res.status(404).json({ success: false, message: 'Empleado no encontrado o inactivo' });
+  }
+});
+
 app.post('/updateProgress', (req, res) => {
   const { id_usuario, id_course, progress } = req.body;
   console.log(req.body)
@@ -109,25 +125,161 @@ app.get('/', (req, res) => {
   res.send("hola"); // Sends "hola" to the browser
 });
 
-app.post('/agregarUsuario', (req, res) => {
-  const { name, email, password, num_empleado } = req.body;
+app.post('/agregarUsuario', async (req, res) => {
+  const { password, num_empleado } = req.body;
 
-  if (!password) {
-    return res.status(400).json({ error: 'La contraseña es obligatoria' });
+  if (!password || !num_empleado) {
+    return res.status(400).json({ error: 'Contraseña y número de empleado requeridos' });
   }
 
-  const hashedPassword = bcrypt.hashSync(password, 10);
-  const query = `INSERT INTO users (name, email, password, status, num_empleado)
-                 VALUES (?, ?, ?, 'Activo', ?)`;
-  const params = [name, email, hashedPassword, num_empleado];
+  // 1. Buscar datos del empleado desde MSSQL
+  const empleado = await getEmpleadoInfo(num_empleado);
+  if (!empleado) {
+    return res.status(404).json({ error: 'Empleado no encontrado en base de RH' });
+  }
 
-  db.query(query, params, (err, result) => {
+  // 2. Generar contraseña encriptada y token
+  const hashedPassword = bcrypt.hashSync(password, 10);
+  const token = crypto.randomBytes(32).toString("hex");
+  const expiracion = new Date();
+  expiracion.setHours(expiracion.getHours() + 24); // expira en 24 horas
+
+  // 3. Insertar en MySQL
+  const query = `
+    INSERT INTO users 
+    (name, email, password, status, num_empleado, rol, token_confirmacion, token_expira, confirmado)
+    VALUES (?, ?, ?, 'Inactivo', ?, ?, ?, ?, 0)
+  `;
+
+  const params = [
+    empleado.NombreCompleto,
+    empleado.CorreoFinal,
+    hashedPassword,
+    empleado.Personal,
+    empleado.Rol,
+    token,
+    expiracion,
+  ];
+
+  db.query(query, params, async (err, result) => {
     if (err) {
-      console.error("❌ Error al insertar el usuario:", err);
-      res.status(500).send('Error en la base de datos');
-    } else {
-      res.json(result);
+      console.error("❌ Error al insertar usuario:", err);
+      return res.status(500).json({ error: 'Error en la base de datos' });
     }
+
+    // 4. Enviar correo con el token de activación
+    const enlace = `${process.env.API_BASE_URL}/confirmar-cuenta?token=${token}`;
+    const html = `
+      <div style="font-family: sans-serif; padding: 24px;">
+        <h2>Confirmación de cuenta</h2>
+        <p>Hola <strong>${empleado.NombreCompleto}</strong>,</p>
+        <p>Haz clic en el siguiente enlace para activar tu cuenta:</p>
+        <a href="${enlace}" style="display:inline-block; background:#007bff; color:white; padding:10px 20px; border-radius:6px; text-decoration:none;">Activar cuenta</a>
+        <p>Este enlace expirará en 24 horas.</p>
+      </div>
+    `;
+
+    try {
+      await enviarCorreo(empleado.CorreoFinal, "Confirma tu cuenta", html);
+      console.log("📨 Correo de confirmación enviado a:", empleado.CorreoFinal);
+      return res.json({ success: true, message: 'Usuario registrado. Revisa tu correo para confirmar.' });
+    } catch (correoError) {
+      console.error("❌ Error al enviar correo:", correoError);
+      return res.status(500).json({ error: 'Usuario creado, pero falló el envío del correo de confirmación' });
+    }
+  });
+});
+
+app.get('/api/verificar-token', (req, res) => {
+  const { token } = req.query;
+
+  if (!token) {
+    return res.status(400).json({ success: false, message: "Token no proporcionado" });
+  }
+
+  const query = `SELECT * FROM users WHERE token_confirmacion = ? AND confirmado = 0`;
+
+  db.query(query, [token], (err, results) => {
+    if (err || results.length === 0) {
+      return res.status(400).json({ success: false, message: "Token inválido o ya confirmado" });
+    }
+
+    const user = results[0];
+    const ahora = new Date();
+
+    if (new Date(user.token_expira) < ahora) {
+      return res.status(400).json({ success: false, message: "Token expirado" });
+    }
+
+    res.json({ success: true, message: "Token válido" });
+  });
+});
+
+app.post('/api/confirmar-cuenta', (req, res) => {
+  const { token } = req.body;
+
+  if (!token) {
+    return res.status(400).json({ success: false, message: "Token no proporcionado" });
+  }
+
+  const query = `SELECT * FROM users WHERE token_confirmacion = ? AND confirmado = 0`;
+
+  db.query(query, [token], (err, [user]) => {
+    if (err || !user) {
+      return res.status(400).json({ success: false, message: "Token inválido" });
+    }
+
+    const ahora = new Date();
+    if (new Date(user.token_expira) < ahora) {
+      return res.status(400).json({ success: false, message: "Token expirado" });
+    }
+
+    const updateQuery = `
+      UPDATE users 
+      SET confirmado = 1, status = 'Activo', fecha_confirmacion = NOW(), token_confirmacion = NULL 
+      WHERE id = ?`;
+
+    db.query(updateQuery, [user.id], (err2) => {
+      if (err2) {
+        return res.status(500).json({ success: false, message: "Error al confirmar cuenta" });
+      }
+
+      res.json({ success: true, message: "Cuenta confirmada correctamente" });
+    });
+  });
+});
+
+app.get('/confirmar-cuenta', (req, res) => {
+  const { token } = req.query;
+
+  if (!token) {
+    return res.status(400).json({ success: false, message: "Token no proporcionado" });
+  }
+
+  const query = `SELECT * FROM users WHERE token_confirmacion = ? AND confirmado = 0`;
+
+  db.query(query, [token], (err, [user]) => {
+    if (err || !user) {
+      return res.status(400).json({ success: false, message: "Token inválido o ya confirmado" });
+    }
+
+    const ahora = new Date();
+    if (user.token_expira && new Date(user.token_expira) < ahora) {
+      return res.status(400).json({ success: false, message: "Token expirado" });
+    }
+
+    const updateQuery = `
+      UPDATE users 
+      SET confirmado = 1, status = 'Activo', fecha_confirmacion = NOW(), token_confirmacion = NULL 
+      WHERE id = ?`;
+
+    db.query(updateQuery, [user.id], (err2) => {
+      if (err2) {
+        return res.status(500).json({ success: false, message: "Error al confirmar cuenta" });
+      }
+
+      return res.json({ success: true, message: "Cuenta confirmada correctamente" });
+    });
   });
 });
 
@@ -827,7 +979,7 @@ app.post('/vacaciones', async (req, res) => {
     if (primerAprobador && primerAprobador.email) {
       console.log("📧 Enviando correo al primer aprobador:", primerAprobador.email);
     
-      const enlace = `http://api-cursos.192.168.29.40.sslip.io/api/aprobaciones/responder?token=${primerAprobador.token_aprobacion}`; // cambia por tu URL real
+      const enlace = `${process.env.API_BASE_URL}/api/aprobaciones/responder?token=${primerAprobador.token_aprobacion}`; // cambia por tu URL real
     
       await enviarCorreo(
         primerAprobador.email,
@@ -916,7 +1068,7 @@ app.post('/vacaciones', async (req, res) => {
   }
 });
 
-const empleadosDb = await fetch('http://api-site-intelisis.192.168.29.40.sslip.io/api/movpersonal', {
+const empleadosDb = await fetch(`${process.env.API_INTELISIS}/api/movpersonal`, {
   method: 'GET',
   headers: {
     'Content-Type': 'application/json',
@@ -1179,7 +1331,7 @@ function procesarAprobacion(idAprobacion, estatus, nota = null) {
                                 const datos = typeof datos_json === "string" ? JSON.parse(datos_json) : datos_json;
                                 const htmlExtra = renderDatosHtml(tipo_movimiento, datos);
 
-                                const enlace = `http://api-cursos.192.168.29.40.sslip.io/api/aprobaciones/responder?token=${token_aprobacion}`;
+                                const enlace = `${process.env.API_BASE_URL}/api/aprobaciones/responder?token=${token_aprobacion}`;
 
                                 try {
                                   await enviarCorreo(
@@ -1467,7 +1619,7 @@ app.post("/api/movimientos", (req, res) => {
           
                   if (result.length > 0) {
                     const { email, token_aprobacion, name } = result[0];
-                    const enlace = `http://api-cursos.192.168.29.40.sslip.io/api/aprobaciones/responder?token=${token_aprobacion}`;
+                    const enlace = `${process.env.API_BASE_URL}/api/aprobaciones/responder?token=${token_aprobacion}`;
           
                     db.query(
                       `SELECT tipo_movimiento, datos_json, comentarios
@@ -1613,7 +1765,7 @@ app.get('/api/movimientos/mios/:num_empleado', async (req, res) => {
     // 🔥 Obtener lista de empleados externos
     let empleadosDb;
     try {
-      const response = await fetch('http://api-site-intelisis.192.168.29.40.sslip.io/api/movpersonal');
+      const response = await fetch(`${process.env.API_INTELISIS}/api/movpersonal`);
       const data = await response.json();
       empleadosDb = data ?? [];
     } catch (error) {
@@ -1708,7 +1860,7 @@ app.get("/api/aprobaciones/pendientes/:idAprobador", async (req, res) => {
   // Obtener empleados
   let empleadosDb;
   try {
-    const response = await fetch("http://api-site-intelisis.192.168.29.40.sslip.io/api/movpersonal");
+    const response = await fetch(`${process.env.API_INTELISIS}/api/movpersonal`);
     const data = await response.json();
     empleadosDb = data ?? [];
   } catch (error) {
