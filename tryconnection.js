@@ -9,6 +9,8 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { getEmpleadoInfo } from './dbMSSQL.js';
 import { renderDatosHtml } from './renders.js';
+import { updateVacaciones } from './dbMSSQL.js';
+
 
 dotenv.config();
 
@@ -1244,61 +1246,108 @@ function procesarAprobacion(idAprobacion, estatus, nota = null) {
                         const pendientes = result[0].total;
 
                         if (pendientes === 0) {
-                          console.log("🎉 Todos aprobaron. Finalizando movimiento.");
+  console.log("🎉 Todos aprobaron. Finalizando movimiento para ID:", movimientoId);
 
-                          db.query(
-                            `UPDATE movimientos_personal SET estatus = 'aprobado' WHERE idMovimiento = ?`,
-                            [movimientoId],
-                            (err) => {
-                              if (err) return db.rollback(() => reject(err));
+  db.query(
+    `UPDATE movimientos_personal SET estatus = 'aprobado' WHERE idMovimiento = ?`,
+    [movimientoId],
+    (err) => {
+      if (err) {
+        console.error("❌ Error actualizando estatus de movimiento:", err);
+        return db.rollback(() => reject(err));
+      }
 
-                              // 🔐 Preparamos los datos para enviar correo después
-                              db.query(
-                                `SELECT m.num_empleado, u.email, u.name
-                             FROM movimientos_personal m
-                             JOIN users u ON m.num_empleado = u.num_empleado
-                             WHERE m.idMovimiento = ?`,
-                                [movimientoId],
-                                (err, [solicitante]) => {
-                                  if (err || !solicitante) {
-                                    console.warn("⚠️ No se pudo obtener info del solicitante.");
-                                    return db.commit((err) => {
-                                      if (err) return db.rollback(() => reject(err));
-                                      resolve(); // terminamos aunque no haya correo
-                                    });
-                                  }
+      console.log("✅ Estatus actualizado a 'aprobado' en movimientos_personal");
 
-                                  db.commit(async (err) => {
-                                    if (err) return db.rollback(() => reject(err));
-                                    console.log('✅ Movimiento aprobado y transacción finalizada');
+      db.query(
+        `SELECT m.num_empleado, u.email, u.name, datos_json, tipo_movimiento
+         FROM movimientos_personal m
+         JOIN users u ON m.num_empleado = u.num_empleado
+         WHERE m.idMovimiento = ?`,
+        [movimientoId],
+        (err, [solicitante]) => {
+          if (err || !solicitante) {
+            console.warn("⚠️ No se pudo obtener info del solicitante. Error:", err, "Resultado:", solicitante);
+            return db.commit((err) => {
+              if (err) return db.rollback(() => reject(err));
+              resolve(); // terminamos aunque no haya correo
+            });
+          }
 
-                                    // 📧 Enviamos correo fuera del scope de transacción
-                                    try {
-                                      await enviarCorreo(
-                                        solicitante.email,
-                                        "✅ Movimiento aprobado",
-                                        `
-                                    <div style="font-family: 'Segoe UI', sans-serif; padding: 40px;">
-                                      <h2>✅ Movimiento aprobado</h2>
-                                      <p>Hola ${solicitante.name},</p>
-                                      <p>Tu solicitud ha sido <strong>aprobada por todos</strong>.</p>
-                                    </div>
-                                    `
-                                      );
-                                      console.log("📧 Correo enviado al solicitante.");
-                                    } catch (err) {
-                                      console.error("❌ Error enviando correo de aprobación:", err);
-                                    }
+          console.log("📥 Solicitante encontrado:", solicitante);
 
-                                    resolve();
-                                  });
-                                }
-                              );
-                            }
-                          );
+          let datos;
+          try {
+            datos = typeof solicitante.datos_json === "string" ? JSON.parse(solicitante.datos_json) : solicitante.datos_json;
+          } catch (parseErr) {
+            console.error("❌ Error parseando datos_json:", parseErr, "Valor original:", solicitante.datos_json);
+            return db.commit((err) => {
+              if (err) return db.rollback(() => reject(err));
+              resolve(); // continuamos aunque no se pueda parsear
+            });
+          }
 
+          console.log("📊 Datos del movimiento:", datos);
+          console.log("📌 Tipo de movimiento:", solicitante.tipo_movimiento);
 
-                        } else {
+          if (solicitante.tipo_movimiento?.toLowerCase() === "vacaciones") {
+            console.log("🔄 Tipo de movimiento es vacaciones, iniciando actualización...");
+
+            const acumuladas = datos.vacaciones_acumuladas_restantes;
+            const ley = datos.vacaciones_ley_restantes;
+
+            if (typeof acumuladas !== "number" || typeof ley !== "number") {
+              console.warn("⚠️ Los datos de vacaciones no son válidos:", { acumuladas, ley });
+            } else {
+              console.log(`📤 Llamando a updateVacaciones con numEmpleado=${solicitante.num_empleado}, acumuladas=${acumuladas}, ley=${ley}`);
+
+              updateVacaciones(solicitante.num_empleado, acumuladas, ley)
+                .then((exito) => {
+                  if (exito) {
+                    console.log("✅ Vacaciones actualizadas correctamente en SQL Server");
+                  } else {
+                    console.warn("⚠️ La actualización de vacaciones no afectó filas o falló silenciosamente");
+                  }
+                })
+                .catch((updateErr) => {
+                  console.error("❌ Error ejecutando updateVacaciones:", updateErr);
+                });
+            }
+          } else {
+            console.log("ℹ️ Tipo de movimiento no es vacaciones. No se actualizan días.");
+          }
+
+          db.commit(async (err) => {
+            if (err) {
+              console.error("❌ Error en commit final:", err);
+              return db.rollback(() => reject(err));
+            }
+            console.log('✅ Movimiento aprobado y transacción finalizada');
+
+            try {
+              await enviarCorreo(
+                solicitante.email,
+                "✅ Movimiento aprobado",
+                `
+                <div style="font-family: 'Segoe UI', sans-serif; padding: 40px;">
+                  <h2>✅ Movimiento aprobado</h2>
+                  <p>Hola ${solicitante.name},</p>
+                  <p>Tu solicitud ha sido <strong>aprobada por todos</strong>.</p>
+                </div>
+              `
+              );
+              console.log("📧 Correo enviado al solicitante.");
+            } catch (err) {
+              console.error("❌ Error enviando correo de aprobación:", err);
+            }
+
+            resolve();
+          });
+        }
+      );
+    }
+  );
+} else {
                           console.log("🔎 Hay pendientes, notificando siguiente aprobador...");
 
                           db.query(
@@ -1737,6 +1786,37 @@ app.get('/api/movimientos/requisiciones/:num_empleado', (req, res) => {
   `;
 
   db.query(query, [num_empleado], (err, rows) => {
+    if (err) {
+      console.error('Error al obtener movimientos:', err);
+      return res.status(500).json({ error: 'Error al obtener movimientos' });
+    }
+
+    res.json({ data: rows });
+  });
+});
+
+app.get('/api/movimientos', (req, res) => {
+  const query = `
+    SELECT 
+      mp.idMovimiento,
+      mp.num_empleado,
+      mp.tipo_movimiento,
+      mp.fecha_incidencia,
+      mp.estatus AS estatus_movimiento,
+      mp.fecha_solicitud,
+      mp.nivel_aprobacion,
+      mp.datos_json,
+      mp.comentarios,
+      (
+        SELECT GROUP_CONCAT(CONCAT_WS(' - ', am.id_aprobador, am.estatus) ORDER BY am.orden ASC)
+        FROM aprobaciones_movimientos am
+        WHERE am.idMovimiento = mp.idMovimiento
+      ) AS historial_aprobaciones
+    FROM movimientos_personal mp
+    ORDER BY mp.fecha_solicitud DESC
+  `;
+
+  db.query(query, (err, rows) => {
     if (err) {
       console.error('Error al obtener movimientos:', err);
       return res.status(500).json({ error: 'Error al obtener movimientos' });
