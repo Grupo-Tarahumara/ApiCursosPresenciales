@@ -7,7 +7,16 @@ import crypto from 'crypto';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
-import { getEmpleadoInfo } from './dbMSSQL.js';
+import {
+  getEmpleadoInfo,
+  getAllUsuariosActivos,
+  getAllUsuarios,
+  getUsuariosPorDepartamento,
+  getDepartamentos,
+  getJerarquiaPersonal,
+  getSubordinadosPorAprobador,
+  getAsistenciaPorCodigo
+} from './dbMSSQL.js';
 import { renderDatosHtml } from './renders.js';
 import { updateVacaciones } from './dbMSSQL.js';
 
@@ -59,6 +68,66 @@ db.connect(err => {
   console.log('Connected to the database');
 });
 
+app.get('/api/asistencia', async (req, res) => {
+  const { codigo } = req.query;
+
+  if (!codigo) {
+    return res.status(400).json({ success: false, message: 'Falta el parámetro "codigo"' });
+  }
+
+  const data = await getAsistenciaPorCodigo(codigo);
+
+  if (!data || data.length === 0) {
+    return res.status(404).json({ success: false, message: 'No se encontró asistencia para este código' });
+  }
+
+  res.json({ success: true, data });
+});
+
+app.get('/api/movpersonal', async (req, res) => {
+  const data = await getJerarquiaPersonal();
+  if (!data) return res.status(500).json({ success: false, message: "Error al obtener jerarquía" });
+  res.json(data);
+});
+
+app.get('/api/users', async (req, res) => {
+  const data = await getAllUsuariosActivos();
+  res.json(data);
+});
+
+app.get('/api/users/all', async (req, res) => {
+  const data = await getAllUsuarios();
+  res.json(data);
+});
+
+app.get('/api/users/by-department', async (req, res) => {
+  const { department } = req.query;
+  if (!department) return res.status(400).json({ error: "Falta el parámetro 'department'" });
+
+  const data = await getUsuariosPorDepartamento(department);
+  res.json(data);
+});
+
+app.get('/api/departments', async (req, res) => {
+  const data = await getDepartamentos();
+  res.json(data);
+});
+
+app.get('/api/subordinados', async (req, res) => {
+  const { num_empleado } = req.query;
+
+  if (!num_empleado) {
+    return res.status(400).json({ success: false, message: 'Número de empleado requerido' });
+  }
+
+  const data = await getSubordinadosPorAprobador(num_empleado);
+
+  if (!data || data.length === 0) {
+    return res.status(404).json({ success: false, message: 'No se encontraron subordinados para este aprobador' });
+  }
+
+  res.json({ success: true, data });
+});
 
 app.get('/cursospresenciales', (req, res) => {
   const query = `SELECT * FROM cursos_presenciales where status="true";`;

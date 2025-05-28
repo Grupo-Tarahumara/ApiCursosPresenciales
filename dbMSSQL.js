@@ -1,14 +1,12 @@
-// dbMSSQL.js
 import sql from 'mssql';
 import dotenv from 'dotenv';
 
 dotenv.config(); // Carga variables del .env
 
-// Configuración segura desde .env
 const config = {
   user: process.env.MSSQL_USER,
   password: process.env.MSSQL_PASSWORD,
-  server: process.env.MSSQL_SERVER, // Ej: '192.168.29.40'
+  server: process.env.MSSQL_SERVER,
   port: parseInt(process.env.MSSQL_PORT || '1433'),
   database: process.env.MSSQL_DB,
   options: {
@@ -17,7 +15,20 @@ const config = {
   }
 };
 
-// Función que busca datos de empleado
+const poolPromise = new sql.ConnectionPool(config)
+  .connect()
+  .then(pool => {
+    console.log('✅ MSSQL conectado correctamente');
+    return pool;
+  })
+  .catch(err => {
+    console.error('❌ Error conectando a MSSQL:', err);
+    throw err;
+  });
+
+export { poolPromise, sql };
+
+// Empleado individual con rol y correo final
 export const getEmpleadoInfo = async (numEmpleado) => {
   try {
     const pool = await sql.connect(config);
@@ -45,11 +56,9 @@ export const getEmpleadoInfo = async (numEmpleado) => {
         LEFT JOIN usuario u ON REPLACE(u.Usuario, 'E-', '') = p.Personal
         WHERE p.Estatus = 'ALTA' AND p.Personal = @numEmpleado
       `);
-
     return result.recordset[0] || null;
-
   } catch (error) {
-    console.error('❌ Error conectando a MSSQL:', error.message || error);
+    console.error('❌ Error getEmpleadoInfo:', error.message || error);
     return null;
   }
 };
