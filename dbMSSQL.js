@@ -63,6 +63,33 @@ export const getEmpleadoInfo = async (numEmpleado) => {
   }
 };
 
+// UPDATE vacaciones_acumuladas y vacaciones_ley en Personal
+export const updateVacaciones = async (numEmpleado, vacacionesAcumuladas, vacacionesLey) => {
+  try {
+    const paddedNumEmpleado = String(numEmpleado) // 🔁 Ajuste para VARCHAR(10)
+    console.log("🔍 Enviando numEmpleado (formateado):", paddedNumEmpleado);
+    const pool = await sql.connect(config);
+    const result = await pool.request()
+      .input('numEmpleado', sql.VarChar, paddedNumEmpleado)
+      .input('vacacionesAcumuladas', sql.Int, vacacionesAcumuladas)
+      .input('vacacionesLey', sql.Int, vacacionesLey)
+      .query(`
+        UPDATE personal
+        SET vacaciones_acumuladas = @vacacionesAcumuladas,
+            vacaciones_ley = @vacacionesLey
+        WHERE Personal = @numEmpleado AND Estatus = 'ALTA'
+      `);
+    const filas = result.rowsAffected[0];
+    console.log(`✅ Vacaciones actualizadas para ${filas} empleado(s) con Personal: ${paddedNumEmpleado}`);
+    console.log("Filas afectadas:", filas);
+
+    return filas > 0;
+  }
+  catch (error) {
+    console.error("❌ Error Actualizando Vacaciones:", error.message || error);
+    return false;
+  }
+};
 // Todos los usuarios activos
 export const getAllUsuariosActivos = async () => {
   try {
