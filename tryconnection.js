@@ -11,7 +11,6 @@ import { getEmpleadoInfo } from './dbMSSQL.js';
 import { renderDatosHtml } from './renders.js';
 import { updateVacaciones } from './dbMSSQL.js';
 
-
 dotenv.config();
 
 // 👇 Forma correcta de obtener __dirname en ES Modules
@@ -1983,6 +1982,77 @@ app.get("/api/aprobaciones/responder", (req, res) => {
     }
   );
 });
+
+//Editar movimiento de personal Vacaciones
+
+app.put("/api/movimientos/:idMovimiento", (req, res) => {
+  const { idMovimiento } = req.params;
+  const { datos_json, comentarios } = req.body;
+
+  db.query(
+    "SELECT tipo_movimiento, num_empleado FROM movimientos_personal WHERE idMovimiento = ?",
+    [idMovimiento],
+    async (err, results) => {
+      if (err) {
+        console.error("❌ Error al obtener movimiento:", err);
+        return res.status(500).json({ success: false, message: "Error en la base de datos" });
+      }
+
+      if (results.length === 0) {
+        return res.status(404).json({ success: false, message: "Movimiento no encontrado" });
+      }
+
+      const tipo = results[0].tipo_movimiento;
+      const numEmpleado = results[0].num_empleado;
+
+      if (tipo.toLowerCase() !== "vacaciones") {
+        return res.status(403).json({ success: false, message: "Solo se pueden editar movimientos de tipo Vacaciones" });
+      }
+
+      // Paso 1: Actualizar movimiento
+      db.query(
+        `UPDATE movimientos_personal
+         SET datos_json = ?, comentarios = ?
+         WHERE idMovimiento = ?`,
+        [JSON.stringify(datos_json), comentarios || "", idMovimiento],
+        async (updateErr, result) => {
+          if (updateErr) {
+            console.error("❌ Error actualizando movimiento:", updateErr);
+            return res.status(500).json({ success: false, message: "Error actualizando movimiento" });
+          }
+
+          // Paso 2: Intentar actualizar el saldo en tabla Personal si hay datos suficientes
+          const leyRestante = parseInt(datos_json.vacaciones_ley_restantes);
+          const acumuladasRestantes = parseInt(datos_json.vacaciones_acumuladas_restantes);
+
+          if (!isNaN(leyRestante) && !isNaN(acumuladasRestantes)) {
+            const success = await updateVacaciones(numEmpleado, acumuladasRestantes, leyRestante);
+
+            if (!success) {
+              console.warn("⚠️ No se pudo actualizar los datos en tabla Personal");
+              return res.status(200).json({
+                success: true,
+                message: "Movimiento actualizado, pero no se pudo actualizar tabla Personal",
+              });
+            }
+
+            return res.status(200).json({
+              success: true,
+              message: "Movimiento y saldo de vacaciones actualizados correctamente",
+            });
+          }
+
+          res.status(200).json({
+            success: true,
+            message: "Movimiento actualizado, pero sin datos suficientes para actualizar tabla Personal",
+          });
+        }
+      );
+    }
+  );
+});
+
+
 
 
 //open port 
