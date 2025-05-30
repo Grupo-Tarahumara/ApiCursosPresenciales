@@ -68,6 +68,12 @@ db.connect(err => {
   console.log('Connected to the database');
 });
 
+let empleadosDb = [];
+
+(async () => {
+  empleadosDb = await getJerarquiaPersonal();
+})();
+
 app.get('/api/asistencia', async (req, res) => {
   const { codigo } = req.query;
 
@@ -114,7 +120,7 @@ app.get('/api/departments', async (req, res) => {
 });
 
 app.get('/api/subordinados', async (req, res) => {
-  const { num_empleado } = req.query;
+  const { num_empleado } = req.body;
 
   if (!num_empleado) {
     return res.status(400).json({ success: false, message: 'Número de empleado requerido' });
@@ -128,6 +134,41 @@ app.get('/api/subordinados', async (req, res) => {
 
   res.json({ success: true, data });
 });
+
+app.get('/api/monitoreo-subordinados', async (req, res) => {
+  const { num_empleado } = req.query;
+
+  if (!num_empleado) {
+    return res.status(400).json({ success: false, message: 'Número de empleado requerido' });
+  }
+
+  try {
+    // Paso 1: Obtener los subordinados del aprobador
+    const subordinados = await getSubordinadosPorAprobador(num_empleado);
+
+    if (!subordinados || subordinados.length === 0) {
+      return res.status(404).json({ success: false, message: 'No se encontraron subordinados para este aprobador' });
+    }
+
+    // Paso 2: Para cada subordinado, obtener sus checadas/incidencias
+    const resultados = await Promise.all(subordinados.map(async (sub) => {
+      const asistencia = await getAsistenciaPorCodigo(sub.Personal);
+
+      return {
+        ...sub,
+        asistencia: asistencia || []
+      };
+    }));
+
+    // Paso 3: Responder con la estructura completa
+    res.json({ success: true, data: resultados });
+
+  } catch (error) {
+    console.error("❌ Error en monitoreo subordinados:", error.message || error);
+    res.status(500).json({ success: false, message: 'Error interno del servidor' });
+  }
+});
+
 
 app.get('/cursospresenciales', (req, res) => {
   const query = `SELECT * FROM cursos_presenciales where status="true";`;
@@ -1018,23 +1059,30 @@ app.post('/vacaciones', async (req, res) => {
       return res.status(404).json({ success: false, message: 'Empleado no encontrado' });
     }
 
-    // Paso 3: Insertar aprobadores dinámicamente
+    // Paso 3: Insertar aprobadores dinámicamente evita el id 64
+    let orden = 1;
+
     for (let i = 1; i <= nivel_aprobacion; i++) {
       const aprobadorKey = `AprobadorNivel${i}`;
       const aprobador = empleado[aprobadorKey];
 
       if (aprobador) {
+        if (parseInt(aprobador) === 64) {
+          console.warn(`⛔ Aprobador con ID 64 omitido en el nivel ${i}`);
+          continue;
+        }
+
         const token = crypto.randomBytes(24).toString('hex');
 
         await db.promise().query(
           `INSERT INTO aprobaciones_movimientos (idMovimiento, orden, id_aprobador, token_aprobacion)
-           VALUES (?, ?, ?, ?)`,
-          [idMovimiento, i, aprobador, token]
+       VALUES (?, ?, ?, ?)`,
+          [idMovimiento, orden, aprobador, token]
         );
 
         console.log(`✅ [LOG] Aprobador nivel ${i} (${aprobador}) registrado con token ${token}`);
-      }
-      else {
+        orden++;
+      } else {
         console.warn(`⚠️ [WARN] Aprobador nivel ${i} no encontrado para el empleado ${num_empleado}`);
       }
     }
@@ -1139,17 +1187,6 @@ app.post('/vacaciones', async (req, res) => {
     res.status(500).json({ success: false, message: 'Error en el servidor' });
   }
 });
-
-const empleadosDb = await fetch(`${process.env.API_INTELISIS}/api/movpersonal`, {
-  method: 'GET',
-  headers: {
-    'Content-Type': 'application/json',
-  },
-}).then(response => response.json()).catch(err => {
-  console.error('Error al obtener empleados:', err);
-  return null;
-}
-);
 
 app.get("/api/aprobaciones", (req, res) => {
   const { aprobador } = req.query;
@@ -1298,173 +1335,173 @@ function procesarAprobacion(idAprobacion, estatus, nota = null) {
                 );
               }
               else {
-                    console.log("✅ Aprobación parcial, buscando siguientes aprobadores...");
+                console.log("✅ Aprobación parcial, buscando siguientes aprobadores...");
 
-                    db.query(
-                      `SELECT COUNT(*) AS total
+                db.query(
+                  `SELECT COUNT(*) AS total
                    FROM aprobaciones_movimientos
                    WHERE idMovimiento = ? AND estatus = 'pendiente'`,
-                      [movimientoId],
-                      (err, result) => {
-                        if (err) {
-                          console.error('❌ Error contando pendientes:', err);
-                          return db.rollback(() => reject(err));
-                        }
+                  [movimientoId],
+                  (err, result) => {
+                    if (err) {
+                      console.error('❌ Error contando pendientes:', err);
+                      return db.rollback(() => reject(err));
+                    }
 
-                        const pendientes = result[0].total;
+                    const pendientes = result[0].total;
 
-                        if (pendientes === 0) {
-  console.log("🎉 Todos aprobaron. Finalizando movimiento para ID:", movimientoId);
+                    if (pendientes === 0) {
+                      console.log("🎉 Todos aprobaron. Finalizando movimiento para ID:", movimientoId);
 
-  db.query(
-    `UPDATE movimientos_personal SET estatus = 'aprobado' WHERE idMovimiento = ?`,
-    [movimientoId],
-    (err) => {
-      if (err) {
-        console.error("❌ Error actualizando estatus de movimiento:", err);
-        return db.rollback(() => reject(err));
-      }
+                      db.query(
+                        `UPDATE movimientos_personal SET estatus = 'aprobado' WHERE idMovimiento = ?`,
+                        [movimientoId],
+                        (err) => {
+                          if (err) {
+                            console.error("❌ Error actualizando estatus de movimiento:", err);
+                            return db.rollback(() => reject(err));
+                          }
 
-      console.log("✅ Estatus actualizado a 'aprobado' en movimientos_personal");
+                          console.log("✅ Estatus actualizado a 'aprobado' en movimientos_personal");
 
-      db.query(
-        `SELECT m.num_empleado, u.email, u.name, datos_json, tipo_movimiento
+                          db.query(
+                            `SELECT m.num_empleado, u.email, u.name, datos_json, tipo_movimiento
          FROM movimientos_personal m
          JOIN users u ON m.num_empleado = u.num_empleado
          WHERE m.idMovimiento = ?`,
-        [movimientoId],
-        (err, [solicitante]) => {
-          if (err || !solicitante) {
-            console.warn("⚠️ No se pudo obtener info del solicitante. Error:", err, "Resultado:", solicitante);
-            return db.commit((err) => {
-              if (err) return db.rollback(() => reject(err));
-              resolve(); // terminamos aunque no haya correo
-            });
-          }
+                            [movimientoId],
+                            (err, [solicitante]) => {
+                              if (err || !solicitante) {
+                                console.warn("⚠️ No se pudo obtener info del solicitante. Error:", err, "Resultado:", solicitante);
+                                return db.commit((err) => {
+                                  if (err) return db.rollback(() => reject(err));
+                                  resolve(); // terminamos aunque no haya correo
+                                });
+                              }
 
-          console.log("📥 Solicitante encontrado:", solicitante);
+                              console.log("📥 Solicitante encontrado:", solicitante);
 
-          let datos;
-          try {
-            datos = typeof solicitante.datos_json === "string" ? JSON.parse(solicitante.datos_json) : solicitante.datos_json;
-          } catch (parseErr) {
-            console.error("❌ Error parseando datos_json:", parseErr, "Valor original:", solicitante.datos_json);
-            return db.commit((err) => {
-              if (err) return db.rollback(() => reject(err));
-              resolve(); // continuamos aunque no se pueda parsear
-            });
-          }
+                              let datos;
+                              try {
+                                datos = typeof solicitante.datos_json === "string" ? JSON.parse(solicitante.datos_json) : solicitante.datos_json;
+                              } catch (parseErr) {
+                                console.error("❌ Error parseando datos_json:", parseErr, "Valor original:", solicitante.datos_json);
+                                return db.commit((err) => {
+                                  if (err) return db.rollback(() => reject(err));
+                                  resolve(); // continuamos aunque no se pueda parsear
+                                });
+                              }
 
-          console.log("📊 Datos del movimiento:", datos);
-          console.log("📌 Tipo de movimiento:", solicitante.tipo_movimiento);
+                              console.log("📊 Datos del movimiento:", datos);
+                              console.log("📌 Tipo de movimiento:", solicitante.tipo_movimiento);
 
-          if (solicitante.tipo_movimiento?.toLowerCase() === "vacaciones") {
-            console.log("🔄 Tipo de movimiento es vacaciones, iniciando actualización...");
+                              if (solicitante.tipo_movimiento?.toLowerCase() === "vacaciones") {
+                                console.log("🔄 Tipo de movimiento es vacaciones, iniciando actualización...");
 
-            const acumuladas = datos.vacaciones_acumuladas_restantes;
-            const ley = datos.vacaciones_ley_restantes;
+                                const acumuladas = datos.vacaciones_acumuladas_restantes;
+                                const ley = datos.vacaciones_ley_restantes;
 
-            if (typeof acumuladas !== "number" || typeof ley !== "number") {
-              console.warn("⚠️ Los datos de vacaciones no son válidos:", { acumuladas, ley });
-            } else {
-              console.log(`📤 Llamando a updateVacaciones con numEmpleado=${solicitante.num_empleado}, acumuladas=${acumuladas}, ley=${ley}`);
+                                if (typeof acumuladas !== "number" || typeof ley !== "number") {
+                                  console.warn("⚠️ Los datos de vacaciones no son válidos:", { acumuladas, ley });
+                                } else {
+                                  console.log(`📤 Llamando a updateVacaciones con numEmpleado=${solicitante.num_empleado}, acumuladas=${acumuladas}, ley=${ley}`);
 
-              updateVacaciones(solicitante.num_empleado, acumuladas, ley)
-                .then((exito) => {
-                  if (exito) {
-                    console.log("✅ Vacaciones actualizadas correctamente en SQL Server");
-                  } else {
-                    console.warn("⚠️ La actualización de vacaciones no afectó filas o falló silenciosamente");
-                  }
-                })
-                .catch((updateErr) => {
-                  console.error("❌ Error ejecutando updateVacaciones:", updateErr);
-                });
-            }
-          } else {
-            console.log("ℹ️ Tipo de movimiento no es vacaciones. No se actualizan días.");
-          }
+                                  updateVacaciones(solicitante.num_empleado, acumuladas, ley)
+                                    .then((exito) => {
+                                      if (exito) {
+                                        console.log("✅ Vacaciones actualizadas correctamente en SQL Server");
+                                      } else {
+                                        console.warn("⚠️ La actualización de vacaciones no afectó filas o falló silenciosamente");
+                                      }
+                                    })
+                                    .catch((updateErr) => {
+                                      console.error("❌ Error ejecutando updateVacaciones:", updateErr);
+                                    });
+                                }
+                              } else {
+                                console.log("ℹ️ Tipo de movimiento no es vacaciones. No se actualizan días.");
+                              }
 
-          db.commit(async (err) => {
-            if (err) {
-              console.error("❌ Error en commit final:", err);
-              return db.rollback(() => reject(err));
-            }
-            console.log('✅ Movimiento aprobado y transacción finalizada');
+                              db.commit(async (err) => {
+                                if (err) {
+                                  console.error("❌ Error en commit final:", err);
+                                  return db.rollback(() => reject(err));
+                                }
+                                console.log('✅ Movimiento aprobado y transacción finalizada');
 
-            try {
-              await enviarCorreo(
-                solicitante.email,
-                "✅ Movimiento aprobado",
-                `
+                                try {
+                                  await enviarCorreo(
+                                    solicitante.email,
+                                    "✅ Movimiento aprobado",
+                                    `
                 <div style="font-family: 'Segoe UI', sans-serif; padding: 40px;">
                   <h2>✅ Movimiento aprobado</h2>
                   <p>Hola ${solicitante.name},</p>
                   <p>Tu solicitud ha sido <strong>aprobada por todos</strong>.</p>
                 </div>
               `
-              );
-              console.log("📧 Correo enviado al solicitante.");
-            } catch (err) {
-              console.error("❌ Error enviando correo de aprobación:", err);
-            }
+                                  );
+                                  console.log("📧 Correo enviado al solicitante.");
+                                } catch (err) {
+                                  console.error("❌ Error enviando correo de aprobación:", err);
+                                }
 
-            resolve();
-          });
-        }
-      );
-    }
-  );
-} else {
-                          console.log("🔎 Hay pendientes, notificando siguiente aprobador...");
+                                resolve();
+                              });
+                            }
+                          );
+                        }
+                      );
+                    } else {
+                      console.log("🔎 Hay pendientes, notificando siguiente aprobador...");
 
-                          db.query(
-                            `SELECT a.id_aprobador, u.email, a.token_aprobacion, u.name
-                         FROM aprobaciones_movimientos a
-                         JOIN users u ON a.id_aprobador = u.num_empleado
-                         WHERE a.idMovimiento = ? AND a.estatus = 'pendiente'
-                           AND NOT EXISTS (
-                             SELECT 1 FROM aprobaciones_movimientos ap
-                             WHERE ap.idMovimiento = a.idMovimiento
-                               AND ap.orden < a.orden
-                               AND ap.estatus != 'aprobado'
-                           )
-                         ORDER BY a.orden
-                         LIMIT 1`,
-                            [movimientoId],
-                            async (err, result) => {
-                              if (err) {
-                                console.error('❌ Error buscando siguiente aprobador:', err);
-                                return db.rollback(() => reject(err));
-                              }
+                      db.query(
+                        `SELECT a.id_aprobador, u.email, a.token_aprobacion, u.name
+                          FROM aprobaciones_movimientos a
+                          JOIN users u ON a.id_aprobador = u.num_empleado
+                          WHERE a.idMovimiento = ? AND a.estatus = 'pendiente' AND a.id_aprobador != 64
+                            AND NOT EXISTS (
+                              SELECT 1 FROM aprobaciones_movimientos ap
+                              WHERE ap.idMovimiento = a.idMovimiento
+                                AND ap.orden < a.orden
+                                AND ap.estatus != 'aprobado'
+                            )
+                          ORDER BY a.orden
+                          LIMIT 1`,
+                        [movimientoId],
+                        async (err, result) => {
+                          if (err) {
+                            console.error('❌ Error buscando siguiente aprobador:', err);
+                            return db.rollback(() => reject(err));
+                          }
 
-                              if (result.length > 0) {
-                                const { email, token_aprobacion, name } = result[0];
-                                console.log("📧 Enviando correo a siguiente aprobador:", email);
+                          if (result.length > 0) {
+                            const { email, token_aprobacion, name } = result[0];
+                            console.log("📧 Enviando correo a siguiente aprobador:", email);
 
-                                // Obtener datos adicionales del movimiento
-                                db.query(
-                                  `SELECT tipo_movimiento, datos_json, comentarios
+                            // Obtener datos adicionales del movimiento
+                            db.query(
+                              `SELECT tipo_movimiento, datos_json, comentarios
                                FROM movimientos_personal
                                WHERE idMovimiento = ?`,
-                                  [movimientoId],
-                                  async (err, [mov]) => {
-                                    if (err) {
-                                      console.error("❌ Error obteniendo datos del movimiento:", err);
-                                      return db.rollback(() => reject(err));
-                                    }
+                              [movimientoId],
+                              async (err, [mov]) => {
+                                if (err) {
+                                  console.error("❌ Error obteniendo datos del movimiento:", err);
+                                  return db.rollback(() => reject(err));
+                                }
 
-                                    const { tipo_movimiento, datos_json, comentarios } = mov;
-                                    const datos = typeof datos_json === "string" ? JSON.parse(datos_json) : datos_json;
-                                    const htmlExtra = renderDatosHtml(tipo_movimiento, datos);
+                                const { tipo_movimiento, datos_json, comentarios } = mov;
+                                const datos = typeof datos_json === "string" ? JSON.parse(datos_json) : datos_json;
+                                const htmlExtra = renderDatosHtml(tipo_movimiento, datos);
 
-                                    const enlace = `${process.env.API_BASE_URL}/api/aprobaciones/responder?token=${token_aprobacion}`;
+                                const enlace = `${process.env.API_BASE_URL}/api/aprobaciones/responder?token=${token_aprobacion}`;
 
-                                    try {
-                                      await enviarCorreo(
-                                        email,
-                                        "Nueva solicitud de movimiento de personal",
-                                        `
+                                try {
+                                  await enviarCorreo(
+                                    email,
+                                    "Nueva solicitud de movimiento de personal",
+                                    `
                               <div style="font-family: 'Segoe UI', sans-serif; background-color: #f4f4f7; padding: 40px;">
                                 <style>
                                   .btn-container {
@@ -1527,29 +1564,29 @@ function procesarAprobacion(idAprobacion, estatus, nota = null) {
                                 </div>
                               </div>
                                     `
-                                      );
-                                    } catch (correoError) {
-                                      console.error("❌ Error enviando correo:", correoError);
-                                      return db.rollback(() => reject(correoError));
-                                    }
+                                  );
+                                } catch (correoError) {
+                                  console.error("❌ Error enviando correo:", correoError);
+                                  return db.rollback(() => reject(correoError));
+                                }
 
-                                    db.commit((err) => {
-                                      if (err) {
-                                        console.error('❌ Error en commit final:', err);
-                                        return db.rollback(() => reject(err));
-                                      }
-                                      console.log('✅ Movimiento parcialmente aprobado, correo enviado, transacción finalizada');
-                                      resolve();
-                                    });
+                                db.commit((err) => {
+                                  if (err) {
+                                    console.error('❌ Error en commit final:', err);
+                                    return db.rollback(() => reject(err));
                                   }
-                                );
+                                  console.log('✅ Movimiento parcialmente aprobado, correo enviado, transacción finalizada');
+                                  resolve();
+                                });
                               }
-                            }
-                          );
+                            );
+                          }
                         }
-                      }
-                    );
+                      );
+                    }
                   }
+                );
+              }
             }
           );
         }
@@ -1564,123 +1601,132 @@ app.post("/api/movimientos", (req, res) => {
   console.log("📄 Body recibido:", req.body);
 
   const { num_empleado, tipo_movimiento, fecha_incidencia, datos_json, comentarios, nivel_aprobacion } = req.body;
+  function iniciarTransaccion () {
+    db.beginTransaction((err) => {
+      if (err) {
+        console.error("❌ Error iniciando transacción:", err);
+        return res.status(500).json({ success: false, message: "Error iniciando transacción" });
+      }
 
-  db.beginTransaction((err) => {
-    if (err) {
-      console.error("❌ Error iniciando transacción:", err);
-      return res.status(500).json({ success: false, message: "Error iniciando transacción" });
-    }
+      console.log("🔄 Transacción iniciada");
 
-    console.log("🔄 Transacción iniciada");
-
-    // 1. Insertar movimiento
-    const insertMovimientoQuery = `
+      // 1. Insertar movimiento
+      const insertMovimientoQuery = `
       INSERT INTO movimientos_personal (num_empleado, tipo_movimiento, fecha_incidencia, datos_json, comentarios, estatus, nivel_aprobacion)
       VALUES (?, ?, ?, ?, ?, 'pendiente', ?)
     `;
 
-    db.query(
-      insertMovimientoQuery,
-      [num_empleado, tipo_movimiento, fecha_incidencia, JSON.stringify(datos_json), comentarios, nivel_aprobacion],
-      (err, result) => {
-        if (err) {
-          console.error("❌ Error insertando movimiento:", err);
-          return db.rollback(() => {
-            res.status(500).json({ success: false, message: "Error insertando movimiento" });
-          });
-        }
-
-        const idMovimiento = result.insertId;
-        console.log("✅ Movimiento insertado con ID:", idMovimiento);
-
-        // 2. Buscar información del empleado
-        const empleado = empleadosDb.find(emp => emp.Personal === num_empleado.toString().padStart(4, '0'));
-
-        if (!empleado) {
-          console.error(`❌ Empleado ${num_empleado} no encontrado en empleadosDb`);
-          return db.rollback(() => {
-            res.status(404).json({ success: false, message: "Empleado no encontrado en base externa" });
-          });
-        }
-
-        console.log("👤 Empleado encontrado:", empleado);
-
-        // 3. Insertar aprobadores
-        const aprobadores = [];
-        for (let nivel = 1; nivel <= nivel_aprobacion; nivel++) {
-          const aprobadorId = empleado[`AprobadorNivel${nivel}`];
-          if (aprobadorId) {
-            const token = crypto.randomBytes(32).toString('hex');
-            aprobadores.push([idMovimiento, nivel, aprobadorId, 'pendiente', token]);
-            console.log(`➕ Aprobador nivel ${nivel} agregado:`, aprobadorId);
-          } else {
-            console.warn(`⚠️ No se encontró aprobador para nivel ${nivel}`);
+      db.query(
+        insertMovimientoQuery,
+        [num_empleado, tipo_movimiento, fecha_incidencia, JSON.stringify(datos_json), comentarios, nivel_aprobacion],
+        (err, result) => {
+          if (err) {
+            console.error("❌ Error insertando movimiento:", err);
+            return db.rollback(() => {
+              res.status(500).json({ success: false, message: "Error insertando movimiento" });
+            });
           }
-        }
 
-        if (aprobadores.length > 0) {
-          const insertAprobadoresQuery = `
+          const idMovimiento = result.insertId;
+          console.log("✅ Movimiento insertado con ID:", idMovimiento);
+
+          // 2. Buscar información del empleado
+          const empleado = empleadosDb.find(emp => emp.Personal === num_empleado.toString().padStart(4, '0'));
+
+          if (!empleado) {
+            console.error(`❌ Empleado ${num_empleado} no encontrado en empleadosDb`);
+            return db.rollback(() => {
+              res.status(404).json({ success: false, message: "Empleado no encontrado en base externa" });
+            });
+          }
+
+          console.log("👤 Empleado encontrado:", empleado);
+
+          // 3. Insertar aprobadores
+          const aprobadores = [];
+          let orden = 1;
+
+          for (let nivel = 1; nivel <= nivel_aprobacion; nivel++) {
+            const aprobadorId = empleado[`AprobadorNivel${nivel}`];
+
+            if (!aprobadorId) {
+              console.warn(`⚠️ No se encontró aprobador para nivel ${nivel}`);
+              continue;
+            }
+
+            if (parseInt(aprobadorId) === 64) {
+              console.warn(`⛔ Aprobador con ID 64 omitido del nivel ${nivel}`);
+              continue;
+            }
+
+            const token = crypto.randomBytes(32).toString('hex');
+            aprobadores.push([idMovimiento, orden++, aprobadorId, 'pendiente', token]);
+            console.log(`➕ Aprobador nivel ${nivel} agregado:`, aprobadorId);
+          }
+
+          if (aprobadores.length > 0) {
+            const insertAprobadoresQuery = `
             INSERT INTO aprobaciones_movimientos (idMovimiento, orden, id_aprobador, estatus, token_aprobacion)
             VALUES ?
           `;
 
-          db.query(insertAprobadoresQuery, [aprobadores], (err) => {
-            if (err) {
-              console.error("❌ Error insertando aprobadores:", err);
-              return db.rollback(() => {
-                res.status(500).json({ success: false, message: "Error insertando aprobadores" });
-              });
-            }
-
-            // Finalizar la transacción exitosamente
-            db.commit((err) => {
+            db.query(insertAprobadoresQuery, [aprobadores], (err) => {
               if (err) {
-                console.error("❌ Error en commit:", err);
+                console.error("❌ Error insertando aprobadores:", err);
                 return db.rollback(() => {
-                  res.status(500).json({ success: false, message: "Error al guardar movimiento" });
+                  res.status(500).json({ success: false, message: "Error insertando aprobadores" });
                 });
               }
 
-              console.log("✅ Transacción completada correctamente");
-              res.json({ success: true, idMovimiento });
+              // Finalizar la transacción exitosamente
+              db.commit((err) => {
+                if (err) {
+                  console.error("❌ Error en commit:", err);
+                  return db.rollback(() => {
+                    res.status(500).json({ success: false, message: "Error al guardar movimiento" });
+                  });
+                }
 
-              // Aquí es donde DEBES enviar el correo al primer aprobador
-              db.query(
-                `SELECT a.id_aprobador, u.email, a.token_aprobacion, u.name
-                 FROM aprobaciones_movimientos a
-                 JOIN users u ON a.id_aprobador = u.num_empleado
-                 WHERE a.idMovimiento = ? AND a.orden = 1`,
-                [idMovimiento],
-                async (err, result) => {
-                  if (err) {
-                    console.error('❌ Error obteniendo primer aprobador:', err);
-                    return;
-                  }
+                console.log("✅ Transacción completada correctamente");
+                res.json({ success: true, idMovimiento });
 
-                  if (result.length > 0) {
-                    const { email, token_aprobacion, name } = result[0];
-                    const enlace = `${process.env.API_BASE_URL}/api/aprobaciones/responder?token=${token_aprobacion}`;
+                // Aquí es donde DEBES enviar el correo al primer aprobador
+                db.query(
+                  `SELECT a.id_aprobador, u.email, a.token_aprobacion, u.name
+FROM aprobaciones_movimientos a
+JOIN users u ON a.id_aprobador = u.num_empleado
+WHERE a.idMovimiento = ? AND a.orden = 1 AND a.id_aprobador != 64`,
+                  [idMovimiento],
+                  async (err, result) => {
+                    if (err) {
+                      console.error('❌ Error obteniendo primer aprobador:', err);
+                      return;
+                    }
 
-                    db.query(
-                      `SELECT tipo_movimiento, datos_json, comentarios
+                    if (result.length > 0) {
+                      const { email, token_aprobacion, name } = result[0];
+                      const enlace = `${process.env.API_BASE_URL}/api/aprobaciones/responder?token=${token_aprobacion}`;
+
+                      db.query(
+                        `SELECT tipo_movimiento, datos_json, comentarios
                        FROM movimientos_personal
                        WHERE idMovimiento = ?`,
-                      [idMovimiento],
-                      async (err, [mov]) => {
-                        if (err) {
-                          console.error("❌ Error obteniendo datos del movimiento:", err);
-                          return;
-                        }
+                        [idMovimiento],
+                        async (err, [mov]) => {
+                          if (err) {
+                            console.error("❌ Error obteniendo datos del movimiento:", err);
+                            return;
+                          }
 
-                        const { tipo_movimiento, datos_json, comentarios } = mov;
-                        const datos = typeof datos_json === "string" ? JSON.parse(datos_json) : datos_json;
-                        const htmlExtra = renderDatosHtml(tipo_movimiento, datos);
+                          const { tipo_movimiento, datos_json, comentarios } = mov;
+                          const datos = typeof datos_json === "string" ? JSON.parse(datos_json) : datos_json;
+                          const htmlExtra = renderDatosHtml(tipo_movimiento, datos);
 
-                        try {
-                          await enviarCorreo(
-                            email,
-                            "Nueva solicitud de movimiento de personal",
-                            `
+                          try {
+                            await enviarCorreo(
+                              email,
+                              "Nueva solicitud de movimiento de personal",
+                              `
                               <div style="font-family: 'Segoe UI', sans-serif; background-color: #f4f4f7; padding: 40px;">
                                 <style>
                                   .btn-container {
@@ -1743,33 +1789,65 @@ app.post("/api/movimientos", (req, res) => {
                                 </div>
                               </div>
                             `
-                          );
-                          console.log("📧 Correo enviado al primer aprobador:", email);
-                        } catch (correoError) {
-                          console.error("❌ Error enviando correo al primer aprobador:", correoError);
+                            );
+                            console.log("📧 Correo enviado al primer aprobador:", email);
+                          } catch (correoError) {
+                            console.error("❌ Error enviando correo al primer aprobador:", correoError);
+                          }
                         }
-                      }
-                    );
+                      );
+                    }
                   }
-                }
-              );
-            });
-          });
-        } else {
-          console.warn("⚠️ No se encontraron aprobadores para insertar.");
-          db.commit((err) => {
-            if (err) {
-              console.error("❌ Error en commit:", err);
-              return db.rollback(() => {
-                res.status(500).json({ success: false, message: "Error al guardar movimiento" });
+                );
               });
-            }
-            res.json({ success: true, idMovimiento });
-          });
-        }
-      },
-    );
-  });
+            });
+          } else {
+            console.warn("⚠️ No se encontraron aprobadores para insertar.");
+            db.commit((err) => {
+              if (err) {
+                console.error("❌ Error en commit:", err);
+                return db.rollback(() => {
+                  res.status(500).json({ success: false, message: "Error al guardar movimiento" });
+                });
+              }
+              res.json({ success: true, idMovimiento });
+            });
+          }
+        },
+      );
+    });
+  };
+  if (tipo_movimiento === "Retardo justificado") {
+    const countQuery = `
+    SELECT COUNT(*) AS total
+    FROM movimientos_personal
+    WHERE num_empleado = ? AND tipo_movimiento = 'Retardo justificado'
+      AND MONTH(fecha_incidencia) = MONTH(CURDATE())
+      AND YEAR(fecha_incidencia) = YEAR(CURDATE())
+  `;
+
+    db.query(countQuery, [num_empleado], (err, results) => {
+      if (err) {
+        console.error("❌ Error contando retardos:", err);
+        return res.status(500).json({ success: false, message: "Error verificando límite de retardos" });
+      }
+
+      const total = results[0].total;
+      if (total >= 3) {
+        return res.status(400).json({
+          success: false,
+          limite: true,
+          message: "Ya alcanzaste el límite de 3 retardos justificados este mes.",
+        });
+      }
+
+      // Si no ha alcanzado el límite, continúa con la transacción como siempre
+      iniciarTransaccion(); // Mueve aquí tu lógica actual de db.beginTransaction(...)
+    });
+  } else {
+    iniciarTransaccion(); // Mueve aquí la lógica completa existente para otros movimientos
+  }
+
 });
 
 // Express
@@ -1800,17 +1878,6 @@ app.get('/api/movimientos/mios/:num_empleado', async (req, res) => {
     if (err) {
       console.error('Error al obtener movimientos:', err);
       return res.status(500).json({ error: 'Error al obtener movimientos' });
-    }
-
-    // 🔥 Obtener lista de empleados externos
-    let empleadosDb;
-    try {
-      const response = await fetch(`${process.env.API_INTELISIS}/api/movpersonal`);
-      const data = await response.json();
-      empleadosDb = data ?? [];
-    } catch (error) {
-      console.error('Error al obtener empleados externos:', error);
-      empleadosDb = [];
     }
 
     // 🔁 Enriquecer historial_aprobaciones con nombres
@@ -1927,17 +1994,6 @@ app.get("/api/aprobaciones/pendientes/:idAprobador", async (req, res) => {
   FROM aprobaciones_movimientos am
   JOIN movimientos_personal mp ON am.idMovimiento = mp.idMovimiento
   WHERE am.id_aprobador = ? AND am.estatus = 'pendiente'`;
-
-  // Obtener empleados
-  let empleadosDb;
-  try {
-    const response = await fetch(`${process.env.API_INTELISIS}/api/movpersonal`);
-    const data = await response.json();
-    empleadosDb = data ?? [];
-  } catch (error) {
-    console.error("❌ Error al obtener empleados externos:", error);
-    empleadosDb = [];
-  }
 
   // Ejecutar query SQL
   db.query(query, [idAprobador], (err, rows) => {
@@ -2121,6 +2177,113 @@ app.put("/api/movimientos/:idMovimiento", (req, res) => {
   );
 });
 
+
+//Plan de estudio
+
+app.get("/api/plan-estudios/:num_empleado", (req, res) => {
+  const { num_empleado } = req.params;
+
+  db.query("SELECT id FROM users WHERE num_empleado = ?", [num_empleado], (err, result) => {
+    if (err) return res.status(500).json({ error: "Error al buscar usuario" });
+    if (result.length === 0) return res.status(404).json({ error: "Usuario no encontrado" });
+
+    const user_id = result[0].id;
+
+    const query = `
+      SELECT 
+        cm.id AS modulo_id,
+        cm.nombre,
+        cm.categoria,
+        cm.descripcion,
+        IFNULL(pe.estatus, 0) AS estatus,
+        pe.fecha_completado
+      FROM catalogo_modulos cm
+      LEFT JOIN plan_estudios_usuario pe 
+        ON pe.modulo_id = cm.id AND pe.user_id = ?
+      ORDER BY cm.categoria, cm.id
+    `;
+
+    db.query(query, [user_id], (err2, modulos) => {
+      if (err2) return res.status(500).json({ error: "Error al obtener módulos" });
+      res.json(modulos);
+    });
+  });
+});
+
+
+app.put('/api/plan-estudios', (req, res) => {
+  const { num_empleado, modulo_id, estatus } = req.body;
+
+  db.query('SELECT id FROM users WHERE num_empleado = ?', [num_empleado], (err, results) => {
+    if (err) return res.status(500).json({ error: 'Error al buscar usuario' });
+    if (results.length === 0) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+    const user_id = results[0].id;
+
+    const sql = `
+      INSERT INTO plan_estudios_usuario (user_id, modulo_id, estatus, fecha_completado)
+      VALUES (?, ?, ?, IF(? = 1, CURDATE(), NULL))
+      ON DUPLICATE KEY UPDATE 
+        estatus = VALUES(estatus),
+        fecha_completado = IF(VALUES(estatus) = 1, CURDATE(), NULL)
+    `;
+
+    db.query(sql, [user_id, modulo_id, estatus, estatus], (err2) => {
+      if (err2) return res.status(500).json({ error: 'Error al guardar módulo' });
+
+      res.json({ message: 'Módulo actualizado correctamente' });
+    });
+  });
+});
+
+
+app.delete('/api/plan-estudios', (req, res) => {
+  const { num_empleado, modulo_id } = req.body;
+
+  db.query('SELECT id FROM users WHERE num_empleado = ?', [num_empleado], (err, results) => {
+    if (err) return res.status(500).json({ error: 'Error al buscar usuario' });
+    if (results.length === 0) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+    const user_id = results[0].id;
+
+    db.query(
+      'DELETE FROM plan_estudios_usuario WHERE user_id = ? AND modulo_id = ?',
+      [user_id, modulo_id],
+      (err2) => {
+        if (err2) return res.status(500).json({ error: 'Error al eliminar módulo' });
+
+        res.json({ message: 'Módulo eliminado del plan de estudios del usuario' });
+      }
+    );
+  });
+});
+
+
+app.get('/api/plan-estudios/:num_empleado/resumen', (req, res) => {
+  const { num_empleado } = req.params;
+
+  db.query('SELECT id FROM users WHERE num_empleado = ?', [num_empleado], (err, results) => {
+    if (err) return res.status(500).json({ error: 'Error al buscar usuario' });
+    if (results.length === 0) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+    const user_id = results[0].id;
+
+    const resumenSql = `
+      SELECT 
+        COUNT(*) AS total_modulos,
+        SUM(IF(pe.estatus = 1, 1, 0)) AS completados
+      FROM catalogo_modulos cm
+      LEFT JOIN plan_estudios_usuario pe 
+        ON pe.modulo_id = cm.id AND pe.user_id = ?
+    `;
+
+    db.query(resumenSql, [user_id], (err2, resumen) => {
+      if (err2) return res.status(500).json({ error: 'Error al obtener resumen' });
+
+      res.json(resumen[0]);
+    });
+  });
+});
 
 
 

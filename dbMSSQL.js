@@ -213,7 +213,7 @@ export const getSubordinadosPorAprobador = async (numEmpleado) => {
   try {
     const pool = await sql.connect(config);
     const result = await pool.request()
-      .input('numEmpleado', sql.VarChar, numEmpleado)
+      .input('numEmpleado', sql.VarChar, String(numEmpleado).trim())
       .query(`
         WITH Jerarquia AS (
             SELECT 
