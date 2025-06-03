@@ -30,8 +30,10 @@ const app = express();
 const port = process.env.SERVER_PORT || 3041;
 
 app.use(cors());
-app.use(express.json());
 app.use('/public', express.static('public'));
+
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
 
 //dates to do a connection
@@ -457,10 +459,10 @@ app.post('/eliminarUsuario', (req, res) => {
 });
 
 app.post('/actualizarCurso', (req, res) => {
-  const { id_course, title, description, tutor, progress } = req.body;
+  const { id_course, title, description, tutor, progress, category } = req.body;
 
   console.log(req.body)
-  const query = `UPDATE cursos_presenciales SET title= '${title}', description = '${description}',tutor= '${tutor}' WHERE id_course= ${id_course}`;
+  const query = `UPDATE cursos_presenciales SET title= '${title}', description = '${description}',tutor= '${tutor}', category ='${category}' WHERE id_course= ${id_course}`;
 
   try {
     db.query(query, (err, result) => {
@@ -506,7 +508,7 @@ app.delete('/eliminarCursoTomado', (req, res) => {
 
 app.post('/agregarCurso', async (req, res) => {
   try {
-    const { title, description, tutor } = req.body;
+    const { title, description, tutor, category } = req.body;
 
     if (!title || !tutor) {
       return res.status(400).json({ error: 'Datos incompletos' });
@@ -514,9 +516,9 @@ app.post('/agregarCurso', async (req, res) => {
 
     console.log("Datos recibidos:", req.body);
 
-    const query = `INSERT INTO cursos_presenciales (title, description, tutor, status) VALUES (?, ?, ?, 'true')`;
+    const query = `INSERT INTO cursos_presenciales (title, description, tutor, status, category) VALUES (?, ?, ?, 'true', ?)`;
 
-    const [result] = await db.promise().query(query, [title, description, tutor]);
+    const [result] = await db.promise().query(query, [title, description, tutor , category]);
 
     res.json({ success: true, message: 'Curso agregado correctamente', result });
 
@@ -872,19 +874,19 @@ app.get('/convenios', (req, res) => {
     }
 
     res.json(results);
-    console.log(results);
+
   });
 });
 
 app.post('/agregarConvenio', (req, res) => {
-  const { titulo, descripcion, img, link } = req.body;
+  const { titulo, descripcion, img, link, tipo } = req.body;
 
   console.log("Datos recibidos:", req.body);
 
-  const query = `INSERT INTO convenios (titulo, descripcion, img, link)
-                 VALUES (?, ?, ?, ?)`;
+  const query = `INSERT INTO convenios (titulo, descripcion, img, link, tipo)
+                 VALUES (?, ?, ?, ?, ?)`;
 
-  const values = [titulo, descripcion, img, link];
+  const values = [titulo, descripcion, img, link, tipo ];
 
   try {
     db.query(query, values, (err, result) => {
@@ -902,13 +904,13 @@ app.post('/agregarConvenio', (req, res) => {
 });
 
 app.put('/actualizarConvenio', (req, res) => {
-  const { idConvenio, titulo, descripcion, img, link } = req.body;
+  const { idConvenio, titulo, descripcion, img, link, tipo } = req.body;
 
   const query = `UPDATE convenios
-                 SET titulo = ?, descripcion = ?, img = ?, link = ?
+                 SET titulo = ?, descripcion = ?, img = ?, link = ?, tipo = ?
                  WHERE idConvenio = ?`;
 
-  const values = [titulo, descripcion, img, link, idConvenio];
+  const values = [titulo, descripcion, img, link,tipo, idConvenio];
 
   try {
     db.query(query, values, (err, result) => {
@@ -2191,25 +2193,24 @@ app.get("/api/plan-estudios/:num_empleado", (req, res) => {
 
     const query = `
       SELECT 
-        cm.id AS modulo_id,
-        cm.nombre,
-        cm.categoria,
-        cm.descripcion,
+        cp.id_course AS modulo_id,
+        cp.title AS nombre,
+        cp.category AS categoria,
+        cp.description AS descripcion,
         IFNULL(pe.estatus, 0) AS estatus,
         pe.fecha_completado
-      FROM catalogo_modulos cm
+      FROM cursos_presenciales cp
       LEFT JOIN plan_estudios_usuario pe 
-        ON pe.modulo_id = cm.id AND pe.user_id = ?
-      ORDER BY cm.categoria, cm.id
+        ON pe.modulo_id = cp.id_course AND pe.user_id = ?
+      ORDER BY cp.status, cp.id_course
     `;
 
     db.query(query, [user_id], (err2, modulos) => {
-      if (err2) return res.status(500).json({ error: "Error al obtener módulos" });
+      if (err2) return res.status(500).json({ error: "Error al obtener cursos" });
       res.json(modulos);
     });
   });
 });
-
 
 app.put('/api/plan-estudios', (req, res) => {
   const { num_empleado, modulo_id, estatus } = req.body;
@@ -2229,9 +2230,9 @@ app.put('/api/plan-estudios', (req, res) => {
     `;
 
     db.query(sql, [user_id, modulo_id, estatus, estatus], (err2) => {
-      if (err2) return res.status(500).json({ error: 'Error al guardar módulo' });
+      if (err2) return res.status(500).json({ error: 'Error al guardar curso' });
 
-      res.json({ message: 'Módulo actualizado correctamente' });
+      res.json({ message: 'Curso actualizado correctamente' });
     });
   });
 });
@@ -2250,9 +2251,9 @@ app.delete('/api/plan-estudios', (req, res) => {
       'DELETE FROM plan_estudios_usuario WHERE user_id = ? AND modulo_id = ?',
       [user_id, modulo_id],
       (err2) => {
-        if (err2) return res.status(500).json({ error: 'Error al eliminar módulo' });
+        if (err2) return res.status(500).json({ error: 'Error al eliminar curso' });
 
-        res.json({ message: 'Módulo eliminado del plan de estudios del usuario' });
+        res.json({ message: 'Curso eliminado del plan de estudios del usuario' });
       }
     );
   });
@@ -2272,9 +2273,9 @@ app.get('/api/plan-estudios/:num_empleado/resumen', (req, res) => {
       SELECT 
         COUNT(*) AS total_modulos,
         SUM(IF(pe.estatus = 1, 1, 0)) AS completados
-      FROM catalogo_modulos cm
+      FROM cursos_presenciales cp
       LEFT JOIN plan_estudios_usuario pe 
-        ON pe.modulo_id = cm.id AND pe.user_id = ?
+        ON pe.modulo_id = cp.id_course AND pe.user_id = ?
     `;
 
     db.query(resumenSql, [user_id], (err2, resumen) => {
@@ -2284,7 +2285,6 @@ app.get('/api/plan-estudios/:num_empleado/resumen', (req, res) => {
     });
   });
 });
-
 
 
 //open port 
