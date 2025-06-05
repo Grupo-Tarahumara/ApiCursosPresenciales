@@ -202,24 +202,11 @@ app.post('/api/validarEmpleado', async (req, res) => {
     return res.status(400).json({ success: false, message: 'Número de empleado requerido' });
   }
 
-  try {
-    // 1. Validar si existe como empleado
-    const empleado = await getEmpleadoInfo(num_empleado);
-    if (!empleado) {
-      return res.status(404).json({ success: false, message: 'Empleado no encontrado o inactivo' });
-    }
-
-    // 2. Validar si ya tiene cuenta en sistema
-    const [result] = await db.query('SELECT id FROM users WHERE num_empleado = ?', [num_empleado]);
-
-    return res.json({
-      success: true,
-      data: empleado,
-      usuarioRegistrado: result.length > 0, // ✅ Esta línea es clave para el frontend
-    });
-  } catch (error) {
-    console.error("Error validando empleado:", error);
-    return res.status(500).json({ success: false, message: 'Error en el servidor' });
+  const empleado = await getEmpleadoInfo(num_empleado);
+  if (empleado) {
+    return res.json({ success: true, data: empleado });
+  } else {
+    return res.status(404).json({ success: false, message: 'Empleado no encontrado o inactivo' });
   }
 });
 
