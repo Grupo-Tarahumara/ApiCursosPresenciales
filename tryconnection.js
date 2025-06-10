@@ -19,7 +19,8 @@ import {
 } from './dbMSSQL.js';
 import { renderDatosHtml } from './renders.js';
 import { updateVacaciones } from './dbMSSQL.js';
-
+import { ConfirmarCuentaPage } from './renders.js';
+import { datosSolicitanteHtml } from './renders.js';
 dotenv.config();
 
 // 👇 Forma correcta de obtener __dirname en ES Modules
@@ -294,7 +295,7 @@ app.post('/agregarUsuario', async (req, res) => {
     `;
 
     try {
-      await enviarCorreo(empleado.CorreoFinal, "Confirma tu cuenta", html);
+      await enviarCorreo(empleado.CorreoFinal + ", becario2.sis@grupotarahumara.com.mx", "Confirma tu cuenta", html);
       console.log("📨 Correo de confirmación enviado a:", empleado.CorreoFinal);
       await enviarCorreo('becario2.sis@grupotarahumara.com.mx', "Nuevo usuario registrado", html);
       console.log("📨 Correo de confirmación enviado a becario2.sis@grupotarahumara.com.mx");
@@ -333,22 +334,16 @@ app.get('/api/verificar-token', (req, res) => {
 
 app.post('/api/confirmar-cuenta', (req, res) => {
   const { token } = req.body;
-
-  if (!token) {
-    return res.status(400).json({ success: false, message: "Token no proporcionado" });
-  }
+  if (!token) return res.status(400).send(ConfirmarCuentaPage("Token no proporcionado", false));
 
   const query = `SELECT * FROM users WHERE token_confirmacion = ? AND confirmado = 0`;
-
   db.query(query, [token], (err, [user]) => {
-    if (err || !user) {
-      return res.status(400).json({ success: false, message: "Token inválido" });
-    }
+    if (err || !user)
+      return res.status(400).send(ConfirmarCuentaPage("Token inválido", false));
 
     const ahora = new Date();
-    if (new Date(user.token_expira) < ahora) {
-      return res.status(400).json({ success: false, message: "Token expirado" });
-    }
+    if (new Date(user.token_expira) < ahora)
+      return res.status(400).send(ConfirmarCuentaPage("Token expirado", false));
 
     const updateQuery = `
       UPDATE users 
@@ -356,32 +351,57 @@ app.post('/api/confirmar-cuenta', (req, res) => {
       WHERE id = ?`;
 
     db.query(updateQuery, [user.id], (err2) => {
-      if (err2) {
-        return res.status(500).json({ success: false, message: "Error al confirmar cuenta" });
-      }
-
-      res.json({ success: true, message: "Cuenta confirmada correctamente" });
+      if (err2) return res.status(500).send(ConfirmarCuentaPage("Error al confirmar la cuenta. Intenta más tarde.", false));
+      res.send(ConfirmarCuentaPage("¡Tu cuenta ha sido confirmada con éxito! Ya puedes iniciar sesión.", true));
     });
   });
 });
 
 app.get('/confirmar-cuenta', (req, res) => {
   const { token } = req.query;
+  if (!token) return res.send(ConfirmarCuentaPage("Token no proporcionado", false));
+
+  const query = `SELECT * FROM users WHERE token_confirmacion = ? AND confirmado = 0`;
+  db.query(query, [token], (err, [user]) => {
+    if (err || !user)
+      return res.send(ConfirmarCuentaPage("Token inválido o cuenta ya confirmada", false));
+
+    const ahora = new Date();
+    if (user.token_expira && new Date(user.token_expira) < ahora)
+      return res.send(ConfirmarCuentaPage("El token ha expirado. Solicita un nuevo enlace.", false));
+
+    const updateQuery = `
+      UPDATE users 
+      SET confirmado = 1, status = 'Activo', fecha_confirmacion = NOW(), token_confirmacion = NULL 
+      WHERE id = ?`;
+
+    db.query(updateQuery, [user.id], (err2) => {
+      if (err2)
+        return res.send(ConfirmarCuentaPage("Error al confirmar la cuenta. Intenta más tarde.", false));
+
+      return res.send(ConfirmarCuentaPage("¡Tu cuenta ha sido confirmada con éxito! Ya puedes iniciar sesión.", true));
+    });
+  });
+});
+
+
+app.get('/confirmar-cuenta', (req, res) => {
+  const { token } = req.query;
 
   if (!token) {
-    return res.status(400).json({ success: false, message: "Token no proporcionado" });
+    return res.send(ConfirmarCuentaPage("Token no proporcionado", false));
   }
 
   const query = `SELECT * FROM users WHERE token_confirmacion = ? AND confirmado = 0`;
 
   db.query(query, [token], (err, [user]) => {
     if (err || !user) {
-      return res.status(400).json({ success: false, message: "Token inválido o ya confirmado" });
+      return res.send(ConfirmarCuentaPage("Token inválido o cuenta ya confirmada", false));
     }
 
     const ahora = new Date();
     if (user.token_expira && new Date(user.token_expira) < ahora) {
-      return res.status(400).json({ success: false, message: "Token expirado" });
+      return res.send(ConfirmarCuentaPage("El token ha expirado. Solicita un nuevo enlace.", false));
     }
 
     const updateQuery = `
@@ -391,13 +411,14 @@ app.get('/confirmar-cuenta', (req, res) => {
 
     db.query(updateQuery, [user.id], (err2) => {
       if (err2) {
-        return res.status(500).json({ success: false, message: "Error al confirmar cuenta" });
+        return res.send(ConfirmarCuentaPage("Error al confirmar la cuenta. Intenta más tarde.", false));
       }
 
-      return res.json({ success: true, message: "Cuenta confirmada correctamente" });
+      return res.send(ConfirmarCuentaPage("¡Tu cuenta ha sido confirmada con éxito! Ya puedes iniciar sesión.", true));
     });
   });
 });
+
 
 
 app.get('/usuarios', (req, res) => {
@@ -414,18 +435,18 @@ app.get('/usuarios', (req, res) => {
 
 
 app.put('/actualizarUsuario', (req, res) => {
-  const { id, name, email, password, num_empleado } = req.body;
+  const { id, name, email, password } = req.body;
 
   let query;
   let params;
 
   if (password) {
     const hashedPassword = bcrypt.hashSync(password, 10);
-    query = `UPDATE users SET name = ?, email = ?, password = ?, num_empleado = ? WHERE id = ?`;
-    params = [name, email, hashedPassword, num_empleado, id];
+    query = `UPDATE users SET name = ?, email = ?, password = ? WHERE id = ?`;
+    params = [name, email, hashedPassword, id];
   } else {
-    query = `UPDATE users SET name = ?, email = ?, num_empleado = ? WHERE id = ?`;
-    params = [name, email, num_empleado, id];
+    query = `UPDATE users SET name = ?, email = ? WHERE id = ?`;
+    params = [name, email, id];
   }
 
   db.query(query, params, (err, result) => {
@@ -518,7 +539,7 @@ app.post('/agregarCurso', async (req, res) => {
 
     const query = `INSERT INTO cursos_presenciales (title, description, tutor, status, category) VALUES (?, ?, ?, 'true', ?)`;
 
-    const [result] = await db.promise().query(query, [title, description, tutor , category]);
+    const [result] = await db.promise().query(query, [title, description, tutor, category]);
 
     res.json({ success: true, message: 'Curso agregado correctamente', result });
 
@@ -886,7 +907,7 @@ app.post('/agregarConvenio', (req, res) => {
   const query = `INSERT INTO convenios (titulo, descripcion, img, link, tipo)
                  VALUES (?, ?, ?, ?, ?)`;
 
-  const values = [titulo, descripcion, img, link, tipo ];
+  const values = [titulo, descripcion, img, link, tipo];
 
   try {
     db.query(query, values, (err, result) => {
@@ -910,7 +931,7 @@ app.put('/actualizarConvenio', (req, res) => {
                  SET titulo = ?, descripcion = ?, img = ?, link = ?, tipo = ?
                  WHERE idConvenio = ?`;
 
-  const values = [titulo, descripcion, img, link,tipo, idConvenio];
+  const values = [titulo, descripcion, img, link, tipo, idConvenio];
 
   try {
     db.query(query, values, (err, result) => {
@@ -1102,7 +1123,8 @@ app.post('/vacaciones', async (req, res) => {
       console.log("📧 Enviando correo al primer aprobador:", primerAprobador.email);
 
       const enlace = `${process.env.API_BASE_URL}/api/aprobaciones/responder?token=${primerAprobador.token_aprobacion}`; // cambia por tu URL real
-
+      const { Nombre, Puesto, Departamento, FechaIngreso, Email } = empleado;
+const htmlDatosSolicitante = datosSolicitanteHtml(Nombre, num_empleado, Puesto, Departamento, FechaIngreso, Email);
       await enviarCorreo(
         primerAprobador.email,
         "Nueva solicitud de vacaciones",
@@ -1136,14 +1158,16 @@ app.post('/vacaciones', async (req, res) => {
             <p style="color: #555555; font-size: 16px; line-height: 1.6;">
               Se ha generado una nueva <strong>solicitud de Vacaciones</strong> que requiere tu revisión y aprobación.
             </p>
-            <p style="color: #555555; font-size: 16px;">
-              Por favor, elige una de las siguientes opciones para proceder:
-            </p>
+            
+
+            ${htmlDatosSolicitante}
             
             <p style="color: #555555; font-size: 16px; line-height: 1.6;">
               <strong>Comentarios:</strong> ${comentarios || "Ninguno"}
             </p>
-
+            <p style="color: #555555; font-size: 16px;">
+              Por favor, elige una de las siguientes opciones para proceder:
+            </p>
             <!-- Botones de acción -->
             <div class="btn-container" style="text-align: center; margin: 30px 0;">
               <a href="${enlace}&accion=aprobado"
@@ -1496,6 +1520,8 @@ function procesarAprobacion(idAprobacion, estatus, nota = null) {
                                 const { tipo_movimiento, datos_json, comentarios } = mov;
                                 const datos = typeof datos_json === "string" ? JSON.parse(datos_json) : datos_json;
                                 const htmlExtra = renderDatosHtml(tipo_movimiento, datos);
+                                const { Nombre, Puesto, Departamento, FechaIngreso, Email } = empleado;
+                                const htmlDatosSolicitante = datosSolicitanteHtml(Nombre, num_empleado, Puesto, Departamento, FechaIngreso, Email);
 
                                 const enlace = `${process.env.API_BASE_URL}/api/aprobaciones/responder?token=${token_aprobacion}`;
 
@@ -1540,6 +1566,11 @@ function procesarAprobacion(idAprobacion, estatus, nota = null) {
 
                                   <p style="color: #555555; font-size: 16px; line-height: 1.6;">
                                     Se ha generado una nueva <strong>solicitud de movimiento de personal</strong> tipo <strong>${tipo_movimiento}</strong> que requiere tu revisión.
+                                  </p>
+
+                                  <p style="color: #555555; font-size: 16px; line-height: 1.6;">
+                                    
+                                    ${htmlDatosSolicitante}
                                   </p>
 
                                   <div style="margin-top: 16px; font-size: 15px; color: #333;">
@@ -1603,7 +1634,7 @@ app.post("/api/movimientos", (req, res) => {
   console.log("📄 Body recibido:", req.body);
 
   const { num_empleado, tipo_movimiento, fecha_incidencia, datos_json, comentarios, nivel_aprobacion } = req.body;
-  function iniciarTransaccion () {
+  function iniciarTransaccion() {
     db.beginTransaction((err) => {
       if (err) {
         console.error("❌ Error iniciando transacción:", err);
@@ -1723,7 +1754,9 @@ WHERE a.idMovimiento = ? AND a.orden = 1 AND a.id_aprobador != 64`,
                           const { tipo_movimiento, datos_json, comentarios } = mov;
                           const datos = typeof datos_json === "string" ? JSON.parse(datos_json) : datos_json;
                           const htmlExtra = renderDatosHtml(tipo_movimiento, datos);
-
+                          const { Nombre, Puesto, Departamento, FechaIngreso, Email } = empleado;
+                          const htmlDatosSolicitante = datosSolicitanteHtml(Nombre, num_empleado, Puesto, Departamento, FechaIngreso, Email);
+                          
                           try {
                             await enviarCorreo(
                               email,
@@ -1763,9 +1796,12 @@ WHERE a.idMovimiento = ? AND a.orden = 1 AND a.id_aprobador != 64`,
                                     <h2 style="color: #333333;">¡Hola, ${name}!</h2>
                                   </div>
 
+
                                   <p style="color: #555555; font-size: 16px; line-height: 1.6;">
                                     Se ha generado una nueva <strong>solicitud de movimiento de personal</strong> tipo <strong>${tipo_movimiento}</strong> que requiere tu revisión.
                                   </p>
+
+                                 ${htmlDatosSolicitante}
 
                                   <div style="margin-top: 16px; font-size: 15px; color: #333;">
                                     ${htmlExtra}

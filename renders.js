@@ -83,3 +83,77 @@ export function renderDatosHtml(tipo, datos) {
       return `<p style="color:gray">Sin detalles específicos para este tipo de movimiento.</p>`;
   }
 }
+
+export function ConfirmarCuentaPage(message, isSuccess) {
+  return `
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+      <meta charset="UTF-8">
+      <title>Confirmación de cuenta</title>
+      <style>
+        body {
+          font-family: 'Segoe UI', sans-serif;
+          background-color: #f4f4f4;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          height: 100vh;
+          margin: 0;
+        }
+        .card {
+          background: white;
+          padding: 40px;
+          border-radius: 12px;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+          text-align: center;
+          max-width: 400px;
+        }
+        .icon {
+          font-size: 64px;
+          color: ${isSuccess ? '#28a745' : '#dc3545'};
+        }
+        .message {
+          font-size: 18px;
+          margin-top: 20px;
+          color: #333;
+        }
+        .button {
+          margin-top: 30px;
+          background-color: ${isSuccess ? '#28a745' : '#6c757d'};
+          color: white;
+          padding: 10px 20px;
+          border: none;
+          border-radius: 6px;
+          text-decoration: none;
+          font-weight: bold;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="card">
+        <div class="icon">${isSuccess ? '✅' : '❌'}</div>
+        <div class="message">${message}</div>
+        <a class="button" href="${process.env.FRONTEND_BASE_URL || '/'}">
+          Ir al inicio
+        </a>
+      </div>
+    </body>
+    </html>
+  `;
+}
+
+
+export function datosSolicitanteHtml(Nombre, num_empleado, Puesto, Departamento, FechaIngreso, Email) {
+  return `
+    <div style="margin-top: 20px; font-size: 15px; color: #333;">
+      <h3 style="margin-bottom: 10px; color: #444;">📌 Datos del Solicitante:</h3>
+      <ul style="list-style: none; padding: 0;">
+        <li><strong>Nombre:</strong> ${Nombre}</li>
+        <li><strong>Número de empleado:</strong> ${num_empleado}</li>
+        <li><strong>Puesto:</strong> ${Puesto}</li>
+        <li><strong>Departamento:</strong> ${Departamento}</li>
+      </ul>
+    </div>
+  `;
+}
