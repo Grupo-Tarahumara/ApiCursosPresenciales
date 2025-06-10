@@ -244,13 +244,13 @@ app.post('/agregarUsuario', async (req, res) => {
   const { password, num_empleado } = req.body;
 
   if (!password || !num_empleado) {
-    return res.status(400).json({ error: 'Contraseña y número de empleado requeridos' });
+    return res.status(400).json({ message: 'Contraseña y número de empleado requeridos' });
   }
 
   // 1. Buscar datos del empleado desde MSSQL
   const empleado = await getEmpleadoInfo(num_empleado);
   if (!empleado) {
-    return res.status(404).json({ error: 'Empleado no encontrado en base de RH' });
+    return res.status(404).json({ message: 'Empleado no encontrado en base de RH' });
   }
 
   // 2. Generar contraseña encriptada y token
@@ -278,12 +278,27 @@ app.post('/agregarUsuario', async (req, res) => {
 
   db.query(query, params, async (err, result) => {
     if (err) {
-      console.error("❌ Error al insertar usuario:", err);
-      return res.status(500).json({ error: 'Error en la base de datos' });
+
+      console.error("❌ Error en la inserción:", err);
+
+      if (err.code === "ER_DUP_ENTRY") {
+        console.log("👉 Error MySQL:", err.code, err.sqlMessage);
+
+        return res.status(409).json({
+          success: false,
+          message: "Ya existe una cuenta para este número de empleado",
+        });
+      }
+      return res.status(500).json({
+        success: false,
+        message: "Error al registrar usuario en base de datos",
+      });
     }
 
+
+
     // 4. Enviar correo con el token de activación
-    const enlace = `${process.env.API_BASE_URL}/confirmar-cuenta?token=${token}`;
+    const enlace = `${process.env.BASE_URL}/confirmar-cuenta?token=${token}`;
     const html = `
       <div style="font-family: sans-serif; padding: 24px;">
         <h2>Confirmación de cuenta</h2>
@@ -302,7 +317,7 @@ app.post('/agregarUsuario', async (req, res) => {
       return res.json({ success: true, message: 'Usuario registrado. Revisa tu correo para confirmar.' });
     } catch (correoError) {
       console.error("❌ Error al enviar correo:", correoError);
-      return res.status(500).json({ error: 'Usuario creado, pero falló el envío del correo de confirmación' });
+      return res.status(500).json({ message: 'Usuario creado, pero falló el envío del correo de confirmación' });
     }
   });
 });
@@ -1124,7 +1139,7 @@ app.post('/vacaciones', async (req, res) => {
 
       const enlace = `${process.env.API_BASE_URL}/api/aprobaciones/responder?token=${primerAprobador.token_aprobacion}`; // cambia por tu URL real
       const { Nombre, Puesto, Departamento, FechaIngreso, Email } = empleado;
-const htmlDatosSolicitante = datosSolicitanteHtml(Nombre, num_empleado, Puesto, Departamento, FechaIngreso, Email);
+      const htmlDatosSolicitante = datosSolicitanteHtml(Nombre, num_empleado, Puesto, Departamento, FechaIngreso, Email);
       await enviarCorreo(
         primerAprobador.email,
         "Nueva solicitud de vacaciones",
@@ -1302,7 +1317,7 @@ function procesarAprobacion(idAprobacion, estatus, nota = null) {
 
                 // Obtener datos del solicitante ANTES del commit
                 db.query(
-                  `SELECT m.num_empleado, u.email, u.name
+                  `SELECT m.num_empleado, u.email, u.name, datos_json, tipo_movimiento
                    FROM movimientos_personal m
                    JOIN users u ON m.num_empleado = u.num_empleado
                    WHERE m.idMovimiento = ?`,
@@ -1334,16 +1349,22 @@ function procesarAprobacion(idAprobacion, estatus, nota = null) {
                                 try {
                                   await enviarCorreo(
                                     datosSolicitante.email,
-                                    "Movimiento de personal rechazado",
+                                    "❌ Movimiento de personal rechazado",
                                     `
-                                <div style="font-family: 'Segoe UI', sans-serif; padding: 40px;">
-                                  <h2>🔴 Tu solicitud de movimiento fue rechazada</h2>
-                                  <p>Estimado(a) ${datosSolicitante.name},</p>
-                                  <p>Tu movimiento fue <strong>rechazado</strong> por el aprobador <strong>${aprobacion.id_aprobador}</strong>.</p>
-                                  <p><strong>Motivo:</strong> ${nota}</p>
-                                  <p style="color:gray;">Por favor, contacta a tu supervisor si necesitas más información.</p>
-                                </div>
-                                `
+                                    <div style="font-family: 'Segoe UI', sans-serif; background-color: #f4f4f7; padding: 40px;">
+                                      <div style="max-width: 600px; margin: 0 auto; background: #fff; border-radius: 12px; padding: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+                                        <h2 style="color: #dc3545; text-align: center;">❌ Movimiento rechazado</h2>
+                                        <p>Hola <strong>${datosSolicitante.name}</strong>,</p>
+                                        <p>Lamentamos informarte que tu solicitud de <strong>${solicitante?.tipo_movimiento || "movimiento"}</strong> fue <strong>rechazada</strong> por el aprobador <strong>${aprobacion.id_aprobador}</strong>.</p>
+                                        <p><strong>Motivo del rechazo:</strong></p>
+                                        <blockquote style="background: #fbeaea; padding: 12px; border-left: 4px solid #dc3545; border-radius: 8px; font-style: italic; color: #a94442;">
+                                          ${nota || "No se especificó un motivo"}
+                                        </blockquote>
+                                        <p style="margin-top: 16px;">Por favor, contacta a tu supervisor o recursos humanos si tienes dudas o deseas más información.</p>
+                                        <p style="font-size: 13px; color: #999;">Este mensaje fue generado automáticamente por el sistema de recursos humanos de Grupo Tarahumara.</p>
+                                      </div>
+                                    </div>
+                                    `
                                   );
                                   console.log("📧 Notificación enviada al solicitante por rechazo.");
                                 } catch (error) {
@@ -1458,14 +1479,21 @@ function procesarAprobacion(idAprobacion, estatus, nota = null) {
                                 try {
                                   await enviarCorreo(
                                     solicitante.email,
-                                    "✅ Movimiento aprobado",
+                                    "✅ Movimiento de personal aprobado",
                                     `
-                <div style="font-family: 'Segoe UI', sans-serif; padding: 40px;">
-                  <h2>✅ Movimiento aprobado</h2>
-                  <p>Hola ${solicitante.name},</p>
-                  <p>Tu solicitud ha sido <strong>aprobada por todos</strong>.</p>
-                </div>
-              `
+  <div style="font-family: 'Segoe UI', sans-serif; background-color: #f4f4f7; padding: 40px;">
+    <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; padding: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+      <h2 style="color: #28a745; text-align: center;">✅ ¡Tu movimiento fue aprobado!</h2>
+      <p>Hola <strong>${solicitante.name}</strong>,</p>
+      <p>Nos complace informarte que tu solicitud de <strong>${solicitante.tipo_movimiento}</strong> ha sido <strong>aprobada por todos los involucrados</strong> y se ha registrado exitosamente.</p>
+      <hr style="margin: 20px 0; border: none; border-top: 1px solid #eee;" />
+      <p><strong>Resumen del movimiento:</strong></p>
+      <pre style="background: #f9f9f9; padding: 12px; border-radius: 8px; font-size: 14px; line-height: 1.5; white-space: pre-wrap;">${JSON.stringify(datos, null, 2)}</pre>
+      <p style="color: #555;">Gracias por utilizar el sistema de recursos humanos de Grupo Tarahumara.</p>
+      <p style="font-size: 13px; color: #999;">Este mensaje es automático. No respondas directamente.</p>
+    </div>
+  </div>
+  `
                                   );
                                   console.log("📧 Correo enviado al solicitante.");
                                 } catch (err) {
@@ -1756,7 +1784,7 @@ WHERE a.idMovimiento = ? AND a.orden = 1 AND a.id_aprobador != 64`,
                           const htmlExtra = renderDatosHtml(tipo_movimiento, datos);
                           const { Nombre, Puesto, Departamento, FechaIngreso, Email } = empleado;
                           const htmlDatosSolicitante = datosSolicitanteHtml(Nombre, num_empleado, Puesto, Departamento, FechaIngreso, Email);
-                          
+
                           try {
                             await enviarCorreo(
                               email,
@@ -1800,6 +1828,8 @@ WHERE a.idMovimiento = ? AND a.orden = 1 AND a.id_aprobador != 64`,
                                   <p style="color: #555555; font-size: 16px; line-height: 1.6;">
                                     Se ha generado una nueva <strong>solicitud de movimiento de personal</strong> tipo <strong>${tipo_movimiento}</strong> que requiere tu revisión.
                                   </p>
+
+                                  Fecha de incidencia: <strong>${fecha_incidencia}</strong>
 
                                  ${htmlDatosSolicitante}
 
@@ -2137,7 +2167,57 @@ app.get("/api/aprobaciones/responder", (req, res) => {
           }
         );
 
-        res.send("✅ Tu respuesta ha sido registrada correctamente. ¡Gracias!");
+        res.send(`<html>
+    <head>
+      <title>Confirmación de Respuesta</title>
+      <style>
+        body {
+          background-color: #f6f9fc;
+          font-family: Arial, sans-serif;
+          padding: 40px;
+          color: #333;
+          text-align: center;
+        }
+        .container {
+          background: #fff;
+          padding: 30px;
+          border-radius: 12px;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+          display: inline-block;
+        }
+        .icon {
+          font-size: 64px;
+          color: #2ecc71;
+        }
+        .warning {
+          color: #f39c12;
+        }
+        .error {
+          color: #e74c3c;
+        }
+        h1 {
+          font-size: 24px;
+          margin-top: 10px;
+        }
+        p {
+          font-size: 18px;
+        }
+        .footer {
+          margin-top: 20px;
+          font-size: 14px;
+          color: #999;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="icon">✅</div>
+        <h1>¡Respuesta registrada correctamente!</h1>
+        <p>Gracias por tu colaboración. Tu decisión ha sido enviada al sistema.</p>
+        <div class="footer">Tarahumara GPT • ${new Date().getFullYear()}</div>
+      </div>
+    </body>
+  </html>`);
       } catch (error) {
         console.error("❌ Error al procesar respuesta por token:", error);
         res.status(500).send("Error interno del servidor.");
