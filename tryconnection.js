@@ -1278,7 +1278,8 @@ app.get("/api/aprobaciones", (req, res) => {
 });
 
 let datosSolicitante = null;
-function procesarAprobacion(idAprobacion, estatus, nota = null) {
+function procesarAprobacion(idAprobacion, estatus, nota) {
+
   return new Promise((resolve, reject) => {
     db.beginTransaction((err) => {
       if (err) {
@@ -1286,7 +1287,7 @@ function procesarAprobacion(idAprobacion, estatus, nota = null) {
         return reject(err);
       }
 
-      console.log(`🔄 Procesando aprobación ID ${idAprobacion} con estatus ${estatus}`);
+      console.log(`🔄 Procesando aprobación ID ${idAprobacion} con estatus ${estatus} y nota ${nota} `);
 
       db.query(
         `UPDATE aprobaciones_movimientos
@@ -1317,7 +1318,7 @@ function procesarAprobacion(idAprobacion, estatus, nota = null) {
 
                 // Obtener datos del solicitante ANTES del commit
                 db.query(
-                  `SELECT m.num_empleado, u.email, u.name, datos_json, tipo_movimiento
+                  `SELECT m.num_empleado, u.email, u.name, datos_json, tipo_movimiento, nota
                    FROM movimientos_personal m
                    JOIN users u ON m.num_empleado = u.num_empleado
                    WHERE m.idMovimiento = ?`,
@@ -1327,7 +1328,7 @@ function procesarAprobacion(idAprobacion, estatus, nota = null) {
 
                     db.query(
                       `UPDATE movimientos_personal
-                       SET estatus = 'rechazado', rechazado_por = ?, nota_rechazo = ?
+                       SET estatus = 'rechazado', rechazado_por = ?, nota = ?
                        WHERE idMovimiento = ?`,
                       [aprobacion.id_aprobador, nota, movimientoId],
                       (err) => {
@@ -1358,7 +1359,7 @@ function procesarAprobacion(idAprobacion, estatus, nota = null) {
                                         <p>Lamentamos informarte que tu solicitud de <strong>${solicitante?.tipo_movimiento || "movimiento"}</strong> fue <strong>rechazada</strong> por el aprobador <strong>${aprobacion.id_aprobador}</strong>.</p>
                                         <p><strong>Motivo del rechazo:</strong></p>
                                         <blockquote style="background: #fbeaea; padding: 12px; border-left: 4px solid #dc3545; border-radius: 8px; font-style: italic; color: #a94442;">
-                                          ${nota || "No se especificó un motivo"}
+                                          ${datosSolicitante.nota || "No se especificó un motivo"}
                                         </blockquote>
                                         <p style="margin-top: 16px;">Por favor, contacta a tu supervisor o recursos humanos si tienes dudas o deseas más información.</p>
                                         <p style="font-size: 13px; color: #999;">Este mensaje fue generado automáticamente por el sistema de recursos humanos de Grupo Tarahumara.</p>
@@ -1401,8 +1402,8 @@ function procesarAprobacion(idAprobacion, estatus, nota = null) {
                       console.log("🎉 Todos aprobaron. Finalizando movimiento para ID:", movimientoId);
 
                       db.query(
-                        `UPDATE movimientos_personal SET estatus = 'aprobado' WHERE idMovimiento = ?`,
-                        [movimientoId],
+                        `UPDATE movimientos_personal SET estatus = 'aprobado', nota = ? WHERE idMovimiento = ?`,
+                        [nota, movimientoId],
                         (err) => {
                           if (err) {
                             console.error("❌ Error actualizando estatus de movimiento:", err);
@@ -1412,7 +1413,7 @@ function procesarAprobacion(idAprobacion, estatus, nota = null) {
                           console.log("✅ Estatus actualizado a 'aprobado' en movimientos_personal");
 
                           db.query(
-                            `SELECT m.num_empleado, u.email, u.name, datos_json, tipo_movimiento
+                            `SELECT m.num_empleado, u.email, u.name, datos_json, tipo_movimiento, nota
          FROM movimientos_personal m
          JOIN users u ON m.num_empleado = u.num_empleado
          WHERE m.idMovimiento = ?`,
@@ -1475,8 +1476,11 @@ function procesarAprobacion(idAprobacion, estatus, nota = null) {
                                   return db.rollback(() => reject(err));
                                 }
                                 console.log('✅ Movimiento aprobado y transacción finalizada');
-
+                                const datosFiltrados = Object.fromEntries(
+                                  Object.entries(datos).filter(([_, valor]) => valor && valor.trim() !== "")
+                                );
                                 try {
+
                                   await enviarCorreo(
                                     solicitante.email,
                                     "✅ Movimiento de personal aprobado",
@@ -1487,8 +1491,14 @@ function procesarAprobacion(idAprobacion, estatus, nota = null) {
       <p>Hola <strong>${solicitante.name}</strong>,</p>
       <p>Nos complace informarte que tu solicitud de <strong>${solicitante.tipo_movimiento}</strong> ha sido <strong>aprobada por todos los involucrados</strong> y se ha registrado exitosamente.</p>
       <hr style="margin: 20px 0; border: none; border-top: 1px solid #eee;" />
-      <p><strong>Resumen del movimiento:</strong></p>
-      <pre style="background: #f9f9f9; padding: 12px; border-radius: 8px; font-size: 14px; line-height: 1.5; white-space: pre-wrap;">${JSON.stringify(datos, null, 2)}</pre>
+      ${solicitante.nota ? `
+        <div style="margin-top: 20px;">
+          <p><strong>Comentarios del aprobador:</strong></p>
+          <p style="background: #fffbea; padding: 12px; border-left: 4px solid #ffec99; border-radius: 6px; font-style: italic;">
+            ${solicitante.nota}
+          </p>
+        </div>
+      ` : ""}
       <p style="color: #555;">Gracias por utilizar el sistema de recursos humanos de Grupo Tarahumara.</p>
       <p style="font-size: 13px; color: #999;">Este mensaje es automático. No respondas directamente.</p>
     </div>
