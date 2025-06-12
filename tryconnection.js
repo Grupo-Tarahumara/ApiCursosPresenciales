@@ -373,35 +373,6 @@ app.post('/api/confirmar-cuenta', (req, res) => {
   });
 });
 
-
-app.get('/confirmar-cuenta', (req, res) => {
-  const { token } = req.query;
-  if (!token) return res.send(ConfirmarCuentaPage("Token no proporcionado", false));
-
-  const query = `SELECT * FROM users WHERE token_confirmacion = ? AND confirmado = 0`;
-  db.query(query, [token], (err, [user]) => {
-    if (err || !user)
-      return res.send(ConfirmarCuentaPage("Token inválido o cuenta ya confirmada", false));
-
-    const ahora = new Date();
-    if (user.token_expira && new Date(user.token_expira) < ahora)
-      return res.send(ConfirmarCuentaPage("El token ha expirado. Solicita un nuevo enlace.", false));
-
-    const updateQuery = `
-      UPDATE users 
-      SET confirmado = 1, status = 'Activo', fecha_confirmacion = NOW(), token_confirmacion = NULL 
-      WHERE id = ?`;
-
-    db.query(updateQuery, [user.id], (err2) => {
-      if (err2)
-        return res.send(ConfirmarCuentaPage("Error al confirmar la cuenta. Intenta más tarde.", false));
-
-      return res.send(ConfirmarCuentaPage("¡Tu cuenta ha sido confirmada con éxito! Ya puedes iniciar sesión.", true));
-    });
-  });
-});
-
-
 app.get('/usuarios', (req, res) => {
   const query = `SELECT * FROM users WHERE status != 'Inactivo'`;
 
