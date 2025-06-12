@@ -19,7 +19,6 @@ import {
 } from './dbMSSQL.js';
 import { renderDatosHtml } from './renders.js';
 import { updateVacaciones } from './dbMSSQL.js';
-import { ConfirmarCuentaPage } from './renders.js';
 import { datosSolicitanteHtml } from './renders.js';
 dotenv.config();
 
@@ -349,16 +348,16 @@ app.get('/api/verificar-token', (req, res) => {
 
 app.post('/api/confirmar-cuenta', (req, res) => {
   const { token } = req.body;
-  if (!token) return res.status(400).send(ConfirmarCuentaPage("Token no proporcionado", false));
+  if (!token) return res.status(400).json({ success: false, message: "Token no proporcionado" });
 
   const query = `SELECT * FROM users WHERE token_confirmacion = ? AND confirmado = 0`;
   db.query(query, [token], (err, [user]) => {
     if (err || !user)
-      return res.status(400).send(ConfirmarCuentaPage("Token inválido", false));
+      return res.status(400).json({ success: false, message: "Token inválido o ya confirmado" });
 
     const ahora = new Date();
     if (new Date(user.token_expira) < ahora)
-      return res.status(400).send(ConfirmarCuentaPage("Token expirado", false));
+      return res.status(400).json({ success: false, message: "Token expirado" });
 
     const updateQuery = `
       UPDATE users 
@@ -366,11 +365,14 @@ app.post('/api/confirmar-cuenta', (req, res) => {
       WHERE id = ?`;
 
     db.query(updateQuery, [user.id], (err2) => {
-      if (err2) return res.status(500).send(ConfirmarCuentaPage("Error al confirmar la cuenta. Intenta más tarde.", false));
-      res.send(ConfirmarCuentaPage("¡Tu cuenta ha sido confirmada con éxito! Ya puedes iniciar sesión.", true));
+      if (err2)
+        return res.status(500).json({ success: false, message: "Error al confirmar la cuenta. Intenta más tarde." });
+
+      return res.json({ success: true, message: "Cuenta activada correctamente" });
     });
   });
 });
+
 
 app.get('/confirmar-cuenta', (req, res) => {
   const { token } = req.query;
@@ -398,42 +400,6 @@ app.get('/confirmar-cuenta', (req, res) => {
     });
   });
 });
-
-
-app.get('/confirmar-cuenta', (req, res) => {
-  const { token } = req.query;
-
-  if (!token) {
-    return res.send(ConfirmarCuentaPage("Token no proporcionado", false));
-  }
-
-  const query = `SELECT * FROM users WHERE token_confirmacion = ? AND confirmado = 0`;
-
-  db.query(query, [token], (err, [user]) => {
-    if (err || !user) {
-      return res.send(ConfirmarCuentaPage("Token inválido o cuenta ya confirmada", false));
-    }
-
-    const ahora = new Date();
-    if (user.token_expira && new Date(user.token_expira) < ahora) {
-      return res.send(ConfirmarCuentaPage("El token ha expirado. Solicita un nuevo enlace.", false));
-    }
-
-    const updateQuery = `
-      UPDATE users 
-      SET confirmado = 1, status = 'Activo', fecha_confirmacion = NOW(), token_confirmacion = NULL 
-      WHERE id = ?`;
-
-    db.query(updateQuery, [user.id], (err2) => {
-      if (err2) {
-        return res.send(ConfirmarCuentaPage("Error al confirmar la cuenta. Intenta más tarde.", false));
-      }
-
-      return res.send(ConfirmarCuentaPage("¡Tu cuenta ha sido confirmada con éxito! Ya puedes iniciar sesión.", true));
-    });
-  });
-});
-
 
 
 app.get('/usuarios', (req, res) => {
