@@ -134,7 +134,7 @@ export function ConfirmarCuentaPage(message, isSuccess) {
       <div class="card">
         <div class="icon">${isSuccess ? '✅' : '❌'}</div>
         <div class="message">${message}</div>
-        <a class="button" href="${process.env.FRONTEND_BASE_URL || '/'}">
+        <a class="button" href="${process.env.BASE_URL || '/'}">
           Ir al inicio
         </a>
       </div>
