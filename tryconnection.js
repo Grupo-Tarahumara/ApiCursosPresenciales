@@ -387,18 +387,18 @@ app.get('/usuarios', (req, res) => {
 
 
 app.put('/actualizarUsuario', (req, res) => {
-  const { id, name, email, password } = req.body;
+  const { id, name, email, password, rol } = req.body;
 
   let query;
   let params;
 
   if (password) {
     const hashedPassword = bcrypt.hashSync(password, 10);
-    query = `UPDATE users SET name = ?, email = ?, password = ? WHERE id = ?`;
-    params = [name, email, hashedPassword, id];
+    query = `UPDATE users SET name = ?, email = ?, password = ?, rol = ? WHERE id = ?`;
+    params = [name, email, hashedPassword, rol, id];
   } else {
-    query = `UPDATE users SET name = ?, email = ? WHERE id = ?`;
-    params = [name, email, id];
+    query = `UPDATE users SET name = ?, email = ?, rol = ? WHERE id = ?`;
+    params = [name, email, rol, id];
   }
 
   db.query(query, params, (err, result) => {
