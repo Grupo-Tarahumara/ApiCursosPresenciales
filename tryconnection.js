@@ -1750,6 +1750,6 @@ app.get('/api/plan-estudios/:num_empleado/resumen', (req, res) => {
 
 
 //open port 
-app.listen(port, () => {
+app.listen(port, '0.0.0.0',  () => {
   console.log(`API running at http://localhost:${port}`);
 });
