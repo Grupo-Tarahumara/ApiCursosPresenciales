@@ -17,10 +17,12 @@ import {
   getSubordinadosPorAprobador,
   getAsistenciaPorCodigo
 } from './dbMSSQL.js';
-import { renderDatosHtml } from './renders.js';
+import { generarCorreoAprobador, renderDatosHtml } from './renders.js';
 import { updateVacaciones } from './dbMSSQL.js';
 import { datosSolicitanteHtml } from './renders.js';
 dotenv.config();
+
+import { procesarAprobacion } from './aprobacion.js';
 
 // 👇 Forma correcta de obtener __dirname en ES Modules
 const __filename = fileURLToPath(import.meta.url);
@@ -51,6 +53,7 @@ const returnConnection = () => {
 };
 
 var db = returnConnection()
+
 
 db.on('error', (err) => {
   console.error('Error con la base de datos:', err);
@@ -985,188 +988,6 @@ app.delete('/comentarios/:id', (req, res) => {
 
 //Movimientos de Personal
 
-// Vacaciones
-app.post('/vacaciones', async (req, res) => {
-  const { num_empleado, fechas, comentarios, datos_json, tipo_movimiento, nivel_aprobacion } = req.body;
-
-  console.log("🟢 [REQ] Solicitud de vacaciones recibida");
-  console.log("📨 num_empleado:", num_empleado);
-  console.log("📆 fechas:", fechas);
-  console.log("📝 comentarios:", comentarios);
-  console.log("📦 datos_json:", datos_json);
-  console.log("🔢 tipo_movimiento:", tipo_movimiento);
-  console.log("🔢 nivel_aprobacion:", nivel_aprobacion);
-
-  if (
-    !num_empleado ||
-    !Array.isArray(fechas) || fechas.length === 0 ||
-    typeof datos_json !== 'object' ||
-    typeof tipo_movimiento !== 'string' || tipo_movimiento.trim() === ''
-  ) {
-    console.warn("❌ [WARN] Datos incompletos o malformados");
-    return res.status(400).json({ success: false, message: 'Datos incompletos o incorrectos' });
-  }
-
-  try {
-    const fechaInicio = fechas[0];
-    console.log(`📍 [INFO] Fecha de inicio: ${fechaInicio}`);
-
-    // Paso 1: Insertar movimiento
-    const [movimientoResult] = await db.promise().query(
-      `INSERT INTO movimientos_personal 
-       (num_empleado, tipo_movimiento, fecha_incidencia, datos_json, comentarios)
-       VALUES (?, ?, ?, ?, ?)`,
-      [
-        num_empleado,
-        'Vacaciones',
-        fechaInicio,
-        JSON.stringify(datos_json),
-        comentarios
-      ]
-    );
-
-    const idMovimiento = movimientoResult.insertId;
-    console.log(`✅ [LOG] Movimiento creado con ID: ${idMovimiento}`);
-
-    // Paso 2: Obtener empleado
-    const empleado = empleadosDb.find(e => e.Personal === num_empleado.toString());
-
-    if (!empleado) {
-      console.warn(`⚠️ [WARN] Empleado ${num_empleado} no encontrado en la lista`);
-      return res.status(404).json({ success: false, message: 'Empleado no encontrado' });
-    }
-
-    // Paso 3: Insertar aprobadores dinámicamente evita el id 64
-    let orden = 1;
-
-    for (let i = 1; i <= nivel_aprobacion; i++) {
-      const aprobadorKey = `AprobadorNivel${i}`;
-      const aprobador = empleado[aprobadorKey];
-
-      if (aprobador) {
-        if (parseInt(aprobador) === 64) {
-          console.warn(`⛔ Aprobador con ID 64 omitido en el nivel ${i}`);
-          continue;
-        }
-
-        const token = crypto.randomBytes(24).toString('hex');
-
-        await db.promise().query(
-          `INSERT INTO aprobaciones_movimientos (idMovimiento, orden, id_aprobador, token_aprobacion)
-       VALUES (?, ?, ?, ?)`,
-          [idMovimiento, orden, aprobador, token]
-        );
-
-        console.log(`✅ [LOG] Aprobador nivel ${i} (${aprobador}) registrado con token ${token}`);
-        orden++;
-      } else {
-        console.warn(`⚠️ [WARN] Aprobador nivel ${i} no encontrado para el empleado ${num_empleado}`);
-      }
-    }
-
-    // Paso 4: Enviar notificación al primer aprobador
-    const [[primerAprobador]] = await db.promise().query(
-      `SELECT a.id_aprobador, a.token_aprobacion, u.email, u.name
-       FROM aprobaciones_movimientos a
-       JOIN users u ON a.id_aprobador = u.num_empleado
-       WHERE a.idMovimiento = ? AND a.orden = 1`,
-      [idMovimiento]
-    );
-
-    if (primerAprobador && primerAprobador.email) {
-      console.log("📧 Enviando correo al primer aprobador:", primerAprobador.email);
-
-      const enlace = `${process.env.API_BASE_URL}/api/aprobaciones/responder?token=${primerAprobador.token_aprobacion}`; // cambia por tu URL real
-      const { Nombre, Puesto, Departamento, FechaIngreso, Email } = empleado;
-      const htmlDatosSolicitante = datosSolicitanteHtml(Nombre, num_empleado, Puesto, Departamento, FechaIngreso, Email);
-      await enviarCorreo(
-        primerAprobador.email,
-        "Nueva solicitud de vacaciones",
-        `
-        <div style="font-family: 'Segoe UI', sans-serif; background-color: #f4f4f7; padding: 40px;">
-          <style>
-            @media only screen and (max-width: 768px) {
-              .btn-container {
-                display: flex !important;
-                flex-direction: column !important;
-                align-items: center !important;
-              }
-              .btn-container a {
-                display: block !important;
-                width: 80% !important;
-                margin: 12px 0 !important;
-                text-align: center !important;
-              }
-            }
-          </style>
-
-          <div style="max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; padding: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
-            
-            <!-- Encabezado con logo y saludo -->
-            <div style="text-align: center;">
-              <img src="https://custom-images.strikinglycdn.com/res/hrscywv4p/image/upload/c_limit,fl_lossy,h_300,w_300,f_auto,q_auto/6088316/314367_858588.png" />
-              <h2 style="color: #333333;">¡Hola, ${primerAprobador.name}!</h2>
-            </div>
-
-            <!-- Mensaje principal -->
-            <p style="color: #555555; font-size: 16px; line-height: 1.6;">
-              Se ha generado una nueva <strong>solicitud de Vacaciones</strong> que requiere tu revisión y aprobación.
-            </p>
-            
-
-            ${htmlDatosSolicitante}
-            
-            <p style="color: #555555; font-size: 16px; line-height: 1.6;">
-              <strong>Comentarios:</strong> ${comentarios || "Ninguno"}
-            </p>
-            <p style="color: #555555; font-size: 16px;">
-              Por favor, elige una de las siguientes opciones para proceder:
-            </p>
-            <!-- Botones de acción -->
-            <div class="btn-container" style="text-align: center; margin: 30px 0;">
-              <a href="${enlace}&accion=aprobado"
-                style="background-color: #28a745; color: white; padding: 10px 16px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; margin: 8px;">
-                ✅ Aprobar
-              </a>
-              <a href="${enlace}&accion=rechazado"
-                style="background-color: #dc3545; color: white; padding: 10px 16px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px; margin: 8px;">
-                ❌ Rechazar
-              </a>
-            </div>
-
-            <!-- Nota informativa -->
-            <p style="color: #777777; font-size: 14px; line-height: 1.5;">
-              Este mensaje ha sido enviado automáticamente por el sistema de recursos humanos de <strong>Grupo Tarahumara</strong>.
-              Si no estás involucrado en esta solicitud, puedes ignorar este correo.
-            </p>
-
-            <!-- Línea divisoria -->
-            <hr style="margin: 40px 0; border: none; border-top: 1px solid #eeeeee;" />
-
-            <!-- Pie de página -->
-            <p style="color: #999999; font-size: 12px; text-align: center;">
-              © ${new Date().getFullYear()} Grupo Tarahumara · Sistema de Recursos Humanos<br />
-              Este mensaje es confidencial y para uso exclusivo del destinatario.
-            </p>
-          </div>
-        </div>
-
-        `
-      );
-    } else {
-      console.warn("⚠️ Primer aprobador no tiene correo asociado.");
-    }
-
-    res.status(201).json({
-      success: true,
-      message: 'Solicitud de vacaciones registrada',
-      idMovimiento,
-    });
-  } catch (error) {
-    console.error('🔥 [ERROR] Al registrar vacaciones:', error);
-    res.status(500).json({ success: false, message: 'Error en el servidor' });
-  }
-});
 
 app.get("/api/aprobaciones", (req, res) => {
   const { aprobador } = req.query;
@@ -1216,624 +1037,186 @@ app.get("/api/aprobaciones", (req, res) => {
   });
 });
 
-let datosSolicitante = null;
-function procesarAprobacion(idAprobacion, estatus, nota) {
-
-  return new Promise((resolve, reject) => {
-    db.beginTransaction((err) => {
-      if (err) {
-        console.error('❌ Error iniciando transacción:', err);
-        return reject(err);
-      }
-
-      console.log(`🔄 Procesando aprobación ID ${idAprobacion} con estatus ${estatus} y nota ${nota} `);
-
-      db.query(
-        `UPDATE aprobaciones_movimientos
-         SET estatus = ?, nota = ?, fecha_aprobacion = NOW()
-         WHERE idAprobacion = ?`,
-        [estatus, nota, idAprobacion],
-        (err) => {
-          if (err) {
-            console.error('❌ Error actualizando aprobación:', err);
-            return db.rollback(() => reject(err));
-          }
-
-          db.query(
-            `SELECT idMovimiento, orden, id_aprobador
-             FROM aprobaciones_movimientos
-             WHERE idAprobacion = ?`,
-            [idAprobacion],
-            (err, result) => {
-              if (err) {
-                console.error('❌ Error obteniendo aprobación:', err);
-                return db.rollback(() => reject(err));
-              }
-
-              const aprobacion = result[0];
-              const movimientoId = aprobacion.idMovimiento;
-              if (estatus === "rechazado") {
-                console.log("🚫 Rechazando movimiento...");
-
-                // Obtener datos del solicitante ANTES del commit
-                db.query(
-                  `SELECT m.num_empleado, u.email, u.name, datos_json, tipo_movimiento, nota
-                   FROM movimientos_personal m
-                   JOIN users u ON m.num_empleado = u.num_empleado
-                   WHERE m.idMovimiento = ?`,
-                  [movimientoId],
-                  (err, [solicitante]) => {
-                    if (!err && solicitante) datosSolicitante = solicitante; // guardamos para después
-
-                    db.query(
-                      `UPDATE movimientos_personal
-                       SET estatus = 'rechazado', rechazado_por = ?, nota = ?
-                       WHERE idMovimiento = ?`,
-                      [aprobacion.id_aprobador, nota, movimientoId],
-                      (err) => {
-                        if (err) return db.rollback(() => reject(err));
-                        // NUEVO: Cancelar otras aprobaciones pendientes
-                        db.query(
-                          `UPDATE aprobaciones_movimientos
-                          SET estatus = 'cancelado'
-                          WHERE idMovimiento = ? AND estatus = 'pendiente' AND idAprobacion != ?`,
-                          [movimientoId, idAprobacion],
-                          (err) => {
-                            if (err) return db.rollback(() => reject(err));
-                            db.commit(async (err) => {
-                              if (err) return db.rollback(() => reject(err));
-                              console.log('✅ Movimiento rechazado y transacción finalizada');
-
-                              // Enviamos el correo después del commit
-                              if (datosSolicitante) {
-                                try {
-                                  await enviarCorreo(
-                                    datosSolicitante.email,
-                                    "❌ Movimiento de personal rechazado",
-                                    `
-                                    <div style="font-family: 'Segoe UI', sans-serif; background-color: #f4f4f7; padding: 40px;">
-                                      <div style="max-width: 600px; margin: 0 auto; background: #fff; border-radius: 12px; padding: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
-                                        <h2 style="color: #dc3545; text-align: center;">❌ Movimiento rechazado</h2>
-                                        <p>Hola <strong>${datosSolicitante.name}</strong>,</p>
-                                        <p>Lamentamos informarte que tu solicitud de <strong>${solicitante?.tipo_movimiento || "movimiento"}</strong> fue <strong>rechazada</strong> por el aprobador <strong>${aprobacion.id_aprobador}</strong>.</p>
-                                        <p><strong>Motivo del rechazo:</strong></p>
-                                        <blockquote style="background: #fbeaea; padding: 12px; border-left: 4px solid #dc3545; border-radius: 8px; font-style: italic; color: #a94442;">
-                                          ${datosSolicitante.nota || "No se especificó un motivo"}
-                                        </blockquote>
-                                        <p style="margin-top: 16px;">Por favor, contacta a tu supervisor o recursos humanos si tienes dudas o deseas más información.</p>
-                                        <p style="font-size: 13px; color: #999;">Este mensaje fue generado automáticamente por el sistema de recursos humanos de Grupo Tarahumara.</p>
-                                      </div>
-                                    </div>
-                                    `
-                                  );
-                                  console.log("📧 Notificación enviada al solicitante por rechazo.");
-                                } catch (error) {
-                                  console.error("❌ Error enviando notificación de rechazo:", error);
-                                }
-                              }
-
-                              resolve();
-                            });
-                          }
-                        );
-                      }
-                    );
-                  }
-                );
-              }
-              else {
-                console.log("✅ Aprobación parcial, buscando siguientes aprobadores...");
-
-                db.query(
-                  `SELECT COUNT(*) AS total
-                   FROM aprobaciones_movimientos
-                   WHERE idMovimiento = ? AND estatus = 'pendiente'`,
-                  [movimientoId],
-                  (err, result) => {
-                    if (err) {
-                      console.error('❌ Error contando pendientes:', err);
-                      return db.rollback(() => reject(err));
-                    }
-
-                    const pendientes = result[0].total;
-
-                    if (pendientes === 0) {
-                      console.log("🎉 Todos aprobaron. Finalizando movimiento para ID:", movimientoId);
-
-                      db.query(
-                        `UPDATE movimientos_personal SET estatus = 'aprobado', nota = ? WHERE idMovimiento = ?`,
-                        [nota, movimientoId],
-                        (err) => {
-                          if (err) {
-                            console.error("❌ Error actualizando estatus de movimiento:", err);
-                            return db.rollback(() => reject(err));
-                          }
-
-                          console.log("✅ Estatus actualizado a 'aprobado' en movimientos_personal");
-
-                          db.query(
-                            `SELECT m.num_empleado, u.email, u.name, datos_json, tipo_movimiento, nota
-         FROM movimientos_personal m
-         JOIN users u ON m.num_empleado = u.num_empleado
-         WHERE m.idMovimiento = ?`,
-                            [movimientoId],
-                            (err, [solicitante]) => {
-                              if (err || !solicitante) {
-                                console.warn("⚠️ No se pudo obtener info del solicitante. Error:", err, "Resultado:", solicitante);
-                                return db.commit((err) => {
-                                  if (err) return db.rollback(() => reject(err));
-                                  resolve(); // terminamos aunque no haya correo
-                                });
-                              }
-
-                              console.log("📥 Solicitante encontrado:", solicitante);
-
-                              let datos;
-                              try {
-                                datos = typeof solicitante.datos_json === "string" ? JSON.parse(solicitante.datos_json) : solicitante.datos_json;
-                              } catch (parseErr) {
-                                console.error("❌ Error parseando datos_json:", parseErr, "Valor original:", solicitante.datos_json);
-                                return db.commit((err) => {
-                                  if (err) return db.rollback(() => reject(err));
-                                  resolve(); // continuamos aunque no se pueda parsear
-                                });
-                              }
-
-                              console.log("📊 Datos del movimiento:", datos);
-                              console.log("📌 Tipo de movimiento:", solicitante.tipo_movimiento);
-
-                              if (solicitante.tipo_movimiento?.toLowerCase() === "vacaciones") {
-                                console.log("🔄 Tipo de movimiento es vacaciones, iniciando actualización...");
-
-                                const acumuladas = datos.vacaciones_acumuladas_restantes;
-                                const ley = datos.vacaciones_ley_restantes;
-
-                                if (typeof acumuladas !== "number" || typeof ley !== "number") {
-                                  console.warn("⚠️ Los datos de vacaciones no son válidos:", { acumuladas, ley });
-                                } else {
-                                  console.log(`📤 Llamando a updateVacaciones con numEmpleado=${solicitante.num_empleado}, acumuladas=${acumuladas}, ley=${ley}`);
-
-                                  updateVacaciones(solicitante.num_empleado, acumuladas, ley)
-                                    .then((exito) => {
-                                      if (exito) {
-                                        console.log("✅ Vacaciones actualizadas correctamente en SQL Server");
-                                      } else {
-                                        console.warn("⚠️ La actualización de vacaciones no afectó filas o falló silenciosamente");
-                                      }
-                                    })
-                                    .catch((updateErr) => {
-                                      console.error("❌ Error ejecutando updateVacaciones:", updateErr);
-                                    });
-                                }
-                              } else {
-                                console.log("ℹ️ Tipo de movimiento no es vacaciones. No se actualizan días.");
-                              }
-
-                              db.commit(async (err) => {
-                                if (err) {
-                                  console.error("❌ Error en commit final:", err);
-                                  return db.rollback(() => reject(err));
-                                }
-                                console.log('✅ Movimiento aprobado y transacción finalizada');
-                                const datosFiltrados = Object.fromEntries(
-                                  Object.entries(datos).filter(([_, valor]) => valor && valor.trim() !== "")
-                                );
-                                try {
-
-                                  await enviarCorreo(
-                                    solicitante.email,
-                                    "✅ Movimiento de personal aprobado",
-                                    `
-  <div style="font-family: 'Segoe UI', sans-serif; background-color: #f4f4f7; padding: 40px;">
-    <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; padding: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
-      <h2 style="color: #28a745; text-align: center;">✅ ¡Tu movimiento fue aprobado!</h2>
-      <p>Hola <strong>${solicitante.name}</strong>,</p>
-      <p>Nos complace informarte que tu solicitud de <strong>${solicitante.tipo_movimiento}</strong> ha sido <strong>aprobada por todos los involucrados</strong> y se ha registrado exitosamente.</p>
-      <hr style="margin: 20px 0; border: none; border-top: 1px solid #eee;" />
-      ${solicitante.nota ? `
-        <div style="margin-top: 20px;">
-          <p><strong>Comentarios del aprobador:</strong></p>
-          <p style="background: #fffbea; padding: 12px; border-left: 4px solid #ffec99; border-radius: 6px; font-style: italic;">
-            ${solicitante.nota}
-          </p>
-        </div>
-      ` : ""}
-      <p style="color: #555;">Gracias por utilizar el sistema de recursos humanos de Grupo Tarahumara.</p>
-      <p style="font-size: 13px; color: #999;">Este mensaje es automático. No respondas directamente.</p>
-    </div>
-  </div>
-  `
-                                  );
-                                  console.log("📧 Correo enviado al solicitante.");
-                                } catch (err) {
-                                  console.error("❌ Error enviando correo de aprobación:", err);
-                                }
-
-                                resolve();
-                              });
-                            }
-                          );
-                        }
-                      );
-                    } else {
-                      console.log("🔎 Hay pendientes, notificando siguiente aprobador...");
-
-                      db.query(
-                        `SELECT a.id_aprobador, u.email, a.token_aprobacion, u.name
-                          FROM aprobaciones_movimientos a
-                          JOIN users u ON a.id_aprobador = u.num_empleado
-                          WHERE a.idMovimiento = ? AND a.estatus = 'pendiente' AND a.id_aprobador != 64
-                            AND NOT EXISTS (
-                              SELECT 1 FROM aprobaciones_movimientos ap
-                              WHERE ap.idMovimiento = a.idMovimiento
-                                AND ap.orden < a.orden
-                                AND ap.estatus != 'aprobado'
-                            )
-                          ORDER BY a.orden
-                          LIMIT 1`,
-                        [movimientoId],
-                        async (err, result) => {
-                          if (err) {
-                            console.error('❌ Error buscando siguiente aprobador:', err);
-                            return db.rollback(() => reject(err));
-                          }
-
-                          if (result.length > 0) {
-                            const { email, token_aprobacion, name } = result[0];
-                            console.log("📧 Enviando correo a siguiente aprobador:", email);
-
-                            // Obtener datos adicionales del movimiento
-                            db.query(
-                              `SELECT tipo_movimiento, datos_json, comentarios
-                               FROM movimientos_personal
-                               WHERE idMovimiento = ?`,
-                              [movimientoId],
-                              async (err, [mov]) => {
-                                if (err) {
-                                  console.error("❌ Error obteniendo datos del movimiento:", err);
-                                  return db.rollback(() => reject(err));
-                                }
-
-                                const { tipo_movimiento, datos_json, comentarios } = mov;
-                                const datos = typeof datos_json === "string" ? JSON.parse(datos_json) : datos_json;
-                                const htmlExtra = renderDatosHtml(tipo_movimiento, datos);
-                                const { Nombre, Puesto, Departamento, FechaIngreso, Email } = empleado;
-                                const htmlDatosSolicitante = datosSolicitanteHtml(Nombre, num_empleado, Puesto, Departamento, FechaIngreso, Email);
-
-                                const enlace = `${process.env.API_BASE_URL}/api/aprobaciones/responder?token=${token_aprobacion}`;
-
-                                try {
-                                  await enviarCorreo(
-                                    email,
-                                    "Nueva solicitud de movimiento de personal",
-                                    `
-                              <div style="font-family: 'Segoe UI', sans-serif; background-color: #f4f4f7; padding: 40px;">
-                                <style>
-                                  .btn-container {
-                                    display: flex;
-                                    flex-wrap: wrap;
-                                    justify-content: center;
-                                    gap: 12px;
-                                  }
-                                  .btn-container a {
-                                    display: inline-block;
-                                    min-width: 160px;
-                                    margin: 8px;
-                                    text-align: center;
-                                  }
-
-                                  /* Fuerza columna vertical cuando el contenedor es estrecho o se corta el botón */
-                                  @media only screen and (max-width: 768px) {
-                                    .btn-container {
-                                      flex-direction: column !important;
-                                      align-items: center !important;
-                                    }
-                                    .btn-container a {
-                                      width: 80% !important;
-                                      margin: 12px 0 !important;
-                                    }
-                                  }
-                                </style>
-
-                                <div style="max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; padding: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
-                                  <div style="text-align: center;">
-                                    <img src="https://custom-images.strikinglycdn.com/res/hrscywv4p/image/upload/c_limit,fl_lossy,h_300,w_300,f_auto,q_auto/6088316/314367_858588.png" />
-                                    <h2 style="color: #333333;">¡Hola, ${name}!</h2>
-                                  </div>
-
-                                  <p style="color: #555555; font-size: 16px; line-height: 1.6;">
-                                    Se ha generado una nueva <strong>solicitud de movimiento de personal</strong> tipo <strong>${tipo_movimiento}</strong> que requiere tu revisión.
-                                  </p>
-
-                                  <p style="color: #555555; font-size: 16px; line-height: 1.6;">
-                                    
-                                    ${htmlDatosSolicitante}
-                                  </p>
-
-                                  <div style="margin-top: 16px; font-size: 15px; color: #333;">
-                                    ${htmlExtra}
-                                  </div>
-
-                                  <p style="color: #555555; font-size: 16px; line-height: 1.6;">
-                                    <strong>Comentarios:</strong> ${comentarios || "Ninguno"}
-                                  </p>
-
-                                  <div class="btn-container" style="margin: 30px 0;">
-                                    <a href="${enlace}&accion=aprobado"
-                                      style="background-color: #28a745; color: white; padding: 10px 16px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
-                                      ✅ Aprobar
-                                    </a>
-                                    <a href="${enlace}&accion=rechazado"
-                                      style="background-color: #dc3545; color: white; padding: 10px 16px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
-                                      ❌ Rechazar
-                                    </a>
-                                  </div>
-                                  <p style="color: #777777; font-size: 14px; line-height: 1.5;">
-                                    Este mensaje ha sido enviado automáticamente por el sistema de recursos humanos de <strong>Grupo Tarahumara</strong>.
-                                  </p>
-                                </div>
-                              </div>
-                                    `
-                                  );
-                                } catch (correoError) {
-                                  console.error("❌ Error enviando correo:", correoError);
-                                  return db.rollback(() => reject(correoError));
-                                }
-
-                                db.commit((err) => {
-                                  if (err) {
-                                    console.error('❌ Error en commit final:', err);
-                                    return db.rollback(() => reject(err));
-                                  }
-                                  console.log('✅ Movimiento parcialmente aprobado, correo enviado, transacción finalizada');
-                                  resolve();
-                                });
-                              }
-                            );
-                          }
-                        }
-                      );
-                    }
-                  }
-                );
-              }
-            }
-          );
-        }
-      );
-    });
-  });
-}
+const usersDb = await getAllUsuarios();
 
 // Crear movimiento
 app.post("/api/movimientos", (req, res) => {
   console.log("📥 Solicitud recibida en /api/movimientos");
   console.log("📄 Body recibido:", req.body);
 
-  const { num_empleado, tipo_movimiento, fecha_incidencia, datos_json, comentarios, nivel_aprobacion } = req.body;
+  const { num_empleado, tipo_movimiento,fecha_incidencia, datos_json, comentarios, nivel_aprobacion } = req.body;
+
+  const fechas = datos_json.fechas;
   function iniciarTransaccion() {
-    db.beginTransaction((err) => {
-      if (err) {
-        console.error("❌ Error iniciando transacción:", err);
-        return res.status(500).json({ success: false, message: "Error iniciando transacción" });
-      }
+  if (tipo_movimiento === 'Vacaciones') {
+    if (
+      !num_empleado ||
+      !Array.isArray(fechas) || fechas.length === 0 ||
+      typeof datos_json !== 'object' ||
+      typeof tipo_movimiento !== 'string' || tipo_movimiento.trim() === ''
+    ) {
+      console.warn("❌ [WARN] Datos incompletos o malformados");
+      return res.status(400).json({ success: false, message: 'Datos incompletos o incorrectos' });
+    }
+  }
 
-      console.log("🔄 Transacción iniciada");
+  db.beginTransaction((err) => {
+    if (err) {
+      console.error("❌ Error iniciando transacción:", err);
+      return res.status(500).json({ success: false, message: "Error iniciando transacción" });
+    }
 
-      // 1. Insertar movimiento
-      const insertMovimientoQuery = `
+    console.log("🔄 Transacción iniciada");
+
+    const insertMovimientoQuery = `
       INSERT INTO movimientos_personal (num_empleado, tipo_movimiento, fecha_incidencia, datos_json, comentarios, estatus, nivel_aprobacion)
       VALUES (?, ?, ?, ?, ?, 'pendiente', ?)
     `;
 
-      db.query(
-        insertMovimientoQuery,
-        [num_empleado, tipo_movimiento, fecha_incidencia, JSON.stringify(datos_json), comentarios, nivel_aprobacion],
-        (err, result) => {
+    db.query(insertMovimientoQuery, [num_empleado, tipo_movimiento, fecha_incidencia, JSON.stringify(datos_json), comentarios, nivel_aprobacion], (err, result) => {
+      if (err) {
+        console.error("❌ Error insertando movimiento:", err);
+        return db.rollback(() => {
+          res.status(500).json({ success: false, message: "Error insertando movimiento" });
+        });
+      }
+
+      const idMovimiento = result.insertId;
+      console.log("✅ Movimiento insertado con ID:", idMovimiento);
+
+      const empleado = empleadosDb.find(emp => emp.Personal === num_empleado.toString().padStart(4, '0'));
+
+      if (!empleado) {
+        console.error(`❌ Empleado ${num_empleado} no encontrado en empleadosDb`);
+        return db.rollback(() => {
+          res.status(404).json({ success: false, message: "Empleado no encontrado en base externa" });
+        });
+      }
+
+      const aprobadores = [];
+      let orden = 1;
+
+      const excepcion64 = ["Nueva Posición", "Aumento Plantilla"].includes(tipo_movimiento);
+
+      for (let nivel = 1; nivel <= nivel_aprobacion; nivel++) {
+        const aprobadorId = empleado[`AprobadorNivel${nivel}`];
+        if (!aprobadorId) continue;
+        if (parseInt(aprobadorId) === 64 && !excepcion64) continue;
+
+        const token = crypto.randomBytes(32).toString('hex');
+        aprobadores.push([idMovimiento, orden++, aprobadorId, 'pendiente', token]);
+      }
+
+      // 🧠 Si el primer aprobador sería 64 omitido, aprobar directamente
+      if (aprobadores.length === 0) {
+        console.warn("⚠️ No se encontraron aprobadores válidos. Aprobando automáticamente...");
+
+        db.query(`
+          UPDATE movimientos_personal
+          SET estatus = 'aprobado', nota = ?
+          WHERE idMovimiento = ?
+        `, [comentarios || '', idMovimiento], (err) => {
           if (err) {
-            console.error("❌ Error insertando movimiento:", err);
+            console.error("❌ Error al aprobar automáticamente:", err);
             return db.rollback(() => {
-              res.status(500).json({ success: false, message: "Error insertando movimiento" });
+              res.status(500).json({ success: false, message: "Error al aprobar automáticamente" });
             });
           }
 
-          const idMovimiento = result.insertId;
-          console.log("✅ Movimiento insertado con ID:", idMovimiento);
-
-          // 2. Buscar información del empleado
-          const empleado = empleadosDb.find(emp => emp.Personal === num_empleado.toString().padStart(4, '0'));
-
-          if (!empleado) {
-            console.error(`❌ Empleado ${num_empleado} no encontrado en empleadosDb`);
-            return db.rollback(() => {
-              res.status(404).json({ success: false, message: "Empleado no encontrado en base externa" });
-            });
-          }
-
-          console.log("👤 Empleado encontrado:", empleado);
-
-          // 3. Insertar aprobadores
-          const aprobadores = [];
-          let orden = 1;
-
-          for (let nivel = 1; nivel <= nivel_aprobacion; nivel++) {
-            const aprobadorId = empleado[`AprobadorNivel${nivel}`];
-
-            if (!aprobadorId) {
-              console.warn(`⚠️ No se encontró aprobador para nivel ${nivel}`);
-              continue;
-            }
-
-            if (parseInt(aprobadorId) === 64) {
-              console.warn(`⛔ Aprobador con ID 64 omitido del nivel ${nivel}`);
-              continue;
-            }
-
-            const token = crypto.randomBytes(32).toString('hex');
-            aprobadores.push([idMovimiento, orden++, aprobadorId, 'pendiente', token]);
-            console.log(`➕ Aprobador nivel ${nivel} agregado:`, aprobadorId);
-          }
-
-          if (aprobadores.length > 0) {
-            const insertAprobadoresQuery = `
-            INSERT INTO aprobaciones_movimientos (idMovimiento, orden, id_aprobador, estatus, token_aprobacion)
-            VALUES ?
-          `;
-
-            db.query(insertAprobadoresQuery, [aprobadores], (err) => {
-              if (err) {
-                console.error("❌ Error insertando aprobadores:", err);
-                return db.rollback(() => {
-                  res.status(500).json({ success: false, message: "Error insertando aprobadores" });
-                });
-              }
-
-              // Finalizar la transacción exitosamente
-              db.commit((err) => {
-                if (err) {
-                  console.error("❌ Error en commit:", err);
-                  return db.rollback(() => {
-                    res.status(500).json({ success: false, message: "Error al guardar movimiento" });
-                  });
-                }
-
-                console.log("✅ Transacción completada correctamente");
-                res.json({ success: true, idMovimiento });
-
-                // Aquí es donde DEBES enviar el correo al primer aprobador
-                db.query(
-                  `SELECT a.id_aprobador, u.email, a.token_aprobacion, u.name
-FROM aprobaciones_movimientos a
-JOIN users u ON a.id_aprobador = u.num_empleado
-WHERE a.idMovimiento = ? AND a.orden = 1 AND a.id_aprobador != 64`,
-                  [idMovimiento],
-                  async (err, result) => {
-                    if (err) {
-                      console.error('❌ Error obteniendo primer aprobador:', err);
-                      return;
-                    }
-
-                    if (result.length > 0) {
-                      const { email, token_aprobacion, name } = result[0];
-                      const enlace = `${process.env.API_BASE_URL}/api/aprobaciones/responder?token=${token_aprobacion}`;
-
-                      db.query(
-                        `SELECT tipo_movimiento, datos_json, comentarios
-                       FROM movimientos_personal
-                       WHERE idMovimiento = ?`,
-                        [idMovimiento],
-                        async (err, [mov]) => {
-                          if (err) {
-                            console.error("❌ Error obteniendo datos del movimiento:", err);
-                            return;
-                          }
-
-                          const { tipo_movimiento, datos_json, comentarios } = mov;
-                          const datos = typeof datos_json === "string" ? JSON.parse(datos_json) : datos_json;
-                          const htmlExtra = renderDatosHtml(tipo_movimiento, datos);
-                          const { Nombre, Puesto, Departamento, FechaIngreso, Email } = empleado;
-                          const htmlDatosSolicitante = datosSolicitanteHtml(Nombre, num_empleado, Puesto, Departamento, FechaIngreso, Email);
-
-                          try {
-                            await enviarCorreo(
-                              email,
-                              "Nueva solicitud de movimiento de personal",
-                              `
-                              <div style="font-family: 'Segoe UI', sans-serif; background-color: #f4f4f7; padding: 40px;">
-                                <style>
-                                  .btn-container {
-                                    display: flex;
-                                    flex-wrap: wrap;
-                                    justify-content: center;
-                                    gap: 12px;
-                                  }
-                                  .btn-container a {
-                                    display: inline-block;
-                                    min-width: 160px;
-                                    margin: 8px;
-                                    text-align: center;
-                                  }
-
-                                  /* Fuerza columna vertical cuando el contenedor es estrecho o se corta el botón */
-                                  @media only screen and (max-width: 768px) {
-                                    .btn-container {
-                                      flex-direction: column !important;
-                                      align-items: center !important;
-                                    }
-                                    .btn-container a {
-                                      width: 80% !important;
-                                      margin: 12px 0 !important;
-                                    }
-                                  }
-                                </style>
-
-                                <div style="max-width: 600px; margin: 0 auto; background: white; border-radius: 12px; padding: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
-                                  <div style="text-align: center;">
-                                    <img src="https://custom-images.strikinglycdn.com/res/hrscywv4p/image/upload/c_limit,fl_lossy,h_300,w_300,f_auto,q_auto/6088316/314367_858588.png" />
-                                    <h2 style="color: #333333;">¡Hola, ${name}!</h2>
-                                  </div>
-
-
-                                  <p style="color: #555555; font-size: 16px; line-height: 1.6;">
-                                    Se ha generado una nueva <strong>solicitud de movimiento de personal</strong> tipo <strong>${tipo_movimiento}</strong> que requiere tu revisión.
-                                  </p>
-
-                                  Fecha de incidencia: <strong>${fecha_incidencia}</strong>
-
-                                 ${htmlDatosSolicitante}
-
-                                  <div style="margin-top: 16px; font-size: 15px; color: #333;">
-                                    ${htmlExtra}
-                                  </div>
-
-                                  <p style="color: #555555; font-size: 16px; line-height: 1.6;">
-                                    <strong>Comentarios:</strong> ${comentarios || "Ninguno"}
-                                  </p>
-
-                                  <div class="btn-container" style="margin: 30px 0;">
-                                    <a href="${enlace}&accion=aprobado"
-                                      style="background-color: #28a745; color: white; padding: 10px 16px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
-                                      ✅ Aprobar
-                                    </a>
-                                    <a href="${enlace}&accion=rechazado"
-                                      style="background-color: #dc3545; color: white; padding: 10px 16px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
-                                      ❌ Rechazar
-                                    </a>
-                                  </div>
-                                  <p style="color: #777777; font-size: 14px; line-height: 1.5;">
-                                    Este mensaje ha sido enviado automáticamente por el sistema de recursos humanos de <strong>Grupo Tarahumara</strong>.
-                                  </p>
-                                </div>
-                              </div>
-                            `
-                            );
-                            console.log("📧 Correo enviado al primer aprobador:", email);
-                          } catch (correoError) {
-                            console.error("❌ Error enviando correo al primer aprobador:", correoError);
-                          }
-                        }
-                      );
-                    }
-                  }
-                );
+          db.commit((err) => {
+            if (err) {
+              console.error("❌ Error en commit:", err);
+              return db.rollback(() => {
+                res.status(500).json({ success: false, message: "Error en commit final" });
               });
-            });
-          } else {
-            console.warn("⚠️ No se encontraron aprobadores para insertar.");
-            db.commit((err) => {
-              if (err) {
-                console.error("❌ Error en commit:", err);
-                return db.rollback(() => {
-                  res.status(500).json({ success: false, message: "Error al guardar movimiento" });
-                });
-              }
-              res.json({ success: true, idMovimiento });
+            }
+
+            console.log("✅ Movimiento aprobado automáticamente");
+            return res.json({ success: true, idMovimiento, aprobado: true });
+          });
+        });
+        return;
+      }
+
+      // Insertar aprobadores y enviar correo
+      db.query(`
+        INSERT INTO aprobaciones_movimientos (idMovimiento, orden, id_aprobador, estatus, token_aprobacion)
+        VALUES ?
+      `, [aprobadores], (err) => {
+        if (err) {
+          console.error("❌ Error insertando aprobadores:", err);
+          return db.rollback(() => {
+            res.status(500).json({ success: false, message: "Error insertando aprobadores" });
+          });
+        }
+
+        db.commit((err) => {
+          if (err) {
+            console.error("❌ Error en commit:", err);
+            return db.rollback(() => {
+              res.status(500).json({ success: false, message: "Error en commit final" });
             });
           }
-        },
-      );
+
+          console.log("✅ Movimiento guardado con aprobadores");
+          res.json({ success: true, idMovimiento });
+
+          // Obtener el primer aprobador para enviar correo
+const [primerAprobador] = aprobadores;
+if (!primerAprobador) return;
+
+const aprobadorId = primerAprobador[2];
+const token = primerAprobador[4];
+
+db.query(
+  `SELECT email, name FROM users WHERE num_empleado = ?`,
+  [aprobadorId],
+  (err, results) => {
+    if (err) {
+      console.error("❌ Error obteniendo datos del aprobador:", err);
+      return;
+    }
+
+    if (results.length === 0 || !results[0].email) {
+      console.warn("⚠️ No se encontró email del aprobador. Abortando envío.");
+      return;
+    }
+
+    const { email, name } = results[0];
+    const enlace = `${process.env.API_BASE_URL}/api/aprobaciones/responder?token=${token}`;
+    const datosHtml = datosSolicitanteHtml(
+      empleado.Nombre,
+      num_empleado,
+      empleado.Puesto,
+      empleado.Departamento,
+      empleado.FechaIngreso,
+      empleado.Email
+    );
+    const htmlExtra = renderDatosHtml(tipo_movimiento, datos_json);
+
+    console.log("📨 Preparando envío de correo...");
+    console.log("📩 Destinatario:", email);
+
+    enviarCorreo(
+      email,
+      "Nueva solicitud de movimiento de personal",
+      generarCorreoAprobador(name, tipo_movimiento, htmlExtra, datosHtml, comentarios, enlace, fecha_incidencia)
+    )
+    .then(() => {
+      console.log("📧 Correo enviado al primer aprobador:", email);
+    })
+    .catch((e) => {
+      console.error("❌ Error al enviar correo:", e.message);
     });
-  };
+  }
+);
+
+        });
+      });
+    });
+  });
+}
+
   if (tipo_movimiento === "Retardo justificado") {
     const countQuery = `
     SELECT COUNT(*) AS total
@@ -1948,25 +1331,28 @@ app.get('/api/movimientos/requisiciones/:num_empleado', (req, res) => {
 });
 
 app.get('/api/movimientos', (req, res) => {
-  const query = `
-    SELECT 
-      mp.idMovimiento,
-      mp.num_empleado,
-      mp.tipo_movimiento,
-      mp.fecha_incidencia,
-      mp.estatus AS estatus_movimiento,
-      mp.fecha_solicitud,
-      mp.nivel_aprobacion,
-      mp.datos_json,
-      mp.comentarios,
-      (
-        SELECT GROUP_CONCAT(CONCAT_WS(' - ', am.id_aprobador, am.estatus) ORDER BY am.orden ASC)
-        FROM aprobaciones_movimientos am
-        WHERE am.idMovimiento = mp.idMovimiento
-      ) AS historial_aprobaciones
-    FROM movimientos_personal mp
-    ORDER BY mp.fecha_solicitud DESC
-  `;
+const query = `
+  SELECT 
+    mp.idMovimiento,
+    mp.num_empleado,
+    u.name AS nombre,
+    
+    mp.tipo_movimiento,
+    mp.fecha_incidencia,
+    mp.estatus AS estatus_movimiento,
+    mp.fecha_solicitud,
+    mp.nivel_aprobacion,
+    mp.datos_json,
+    mp.comentarios,
+    (
+      SELECT GROUP_CONCAT(CONCAT_WS(' - ', am.id_aprobador, am.estatus) ORDER BY am.orden ASC)
+      FROM aprobaciones_movimientos am
+      WHERE am.idMovimiento = mp.idMovimiento
+    ) AS historial_aprobaciones
+  FROM movimientos_personal mp
+  LEFT JOIN users u ON u.num_empleado = mp.num_empleado
+  ORDER BY mp.fecha_solicitud DESC
+`;
 
   db.query(query, (err, rows) => {
     if (err) {
@@ -2100,7 +1486,7 @@ app.get("/api/aprobaciones/responder", (req, res) => {
 
       try {
         // Procesar la aprobación (también actualiza el estatus y guarda nota)
-        await procesarAprobacion(aprobacion.idAprobacion, accion, "[Respuesta vía correo]");
+        await procesarAprobacion(aprobacion.idAprobacion, accion, "");
 
         // Inhabilitar el token para que no pueda usarse de nuevo
         db.query(
@@ -2163,7 +1549,7 @@ app.get("/api/aprobaciones/responder", (req, res) => {
         <div class="icon">✅</div>
         <h1>¡Respuesta registrada correctamente!</h1>
         <p>Gracias por tu colaboración. Tu decisión ha sido enviada al sistema.</p>
-        <div class="footer">Tarahumara GPT • ${new Date().getFullYear()}</div>
+        <div class="footer">Grupo Tarahumara • ${new Date().getFullYear()}</div>
       </div>
     </body>
   </html>`);
@@ -2197,7 +1583,7 @@ app.put("/api/movimientos/:idMovimiento", (req, res) => {
       const tipo = results[0].tipo_movimiento;
       const numEmpleado = results[0].num_empleado;
 
-      if (tipo.toLowerCase() !== "vacaciones") {
+      if (tipo !== "Vacaciones") {
         return res.status(403).json({ success: false, message: "Solo se pueden editar movimientos de tipo Vacaciones" });
       }
 
