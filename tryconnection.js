@@ -31,9 +31,20 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const port = process.env.SERVER_PORT || 3041;
 
+const allowedOrigins = [
+  'http://localhost:3000', // para desarrollo
+  'https://capacitacion.in.grupotarahumara.com.mx', // para producción
+];
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL,
-  credentials: true, // solo si usas cookies o sesiones
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Origen no permitido por CORS'));
+    }
+  },
+  credentials: true,
 }));
 app.use('/public', express.static('public'));
 app.use(express.json({ limit: "50mb" }));
