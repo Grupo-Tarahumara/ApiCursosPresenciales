@@ -1329,25 +1329,28 @@ app.get('/api/movimientos/requisiciones/:num_empleado', (req, res) => {
 });
 
 app.get('/api/movimientos', (req, res) => {
-  const query = `
-    SELECT 
-      mp.idMovimiento,
-      mp.num_empleado,
-      mp.tipo_movimiento,
-      mp.fecha_incidencia,
-      mp.estatus AS estatus_movimiento,
-      mp.fecha_solicitud,
-      mp.nivel_aprobacion,
-      mp.datos_json,
-      mp.comentarios,
-      (
-        SELECT GROUP_CONCAT(CONCAT_WS(' - ', am.id_aprobador, am.estatus) ORDER BY am.orden ASC)
-        FROM aprobaciones_movimientos am
-        WHERE am.idMovimiento = mp.idMovimiento
-      ) AS historial_aprobaciones
-    FROM movimientos_personal mp
-    ORDER BY mp.fecha_solicitud DESC
-  `;
+const query = `
+  SELECT 
+    mp.idMovimiento,
+    mp.num_empleado,
+    u.name AS nombre,
+    
+    mp.tipo_movimiento,
+    mp.fecha_incidencia,
+    mp.estatus AS estatus_movimiento,
+    mp.fecha_solicitud,
+    mp.nivel_aprobacion,
+    mp.datos_json,
+    mp.comentarios,
+    (
+      SELECT GROUP_CONCAT(CONCAT_WS(' - ', am.id_aprobador, am.estatus) ORDER BY am.orden ASC)
+      FROM aprobaciones_movimientos am
+      WHERE am.idMovimiento = mp.idMovimiento
+    ) AS historial_aprobaciones
+  FROM movimientos_personal mp
+  LEFT JOIN users u ON u.num_empleado = mp.num_empleado
+  ORDER BY mp.fecha_solicitud DESC
+`;
 
   db.query(query, (err, rows) => {
     if (err) {
@@ -1481,7 +1484,7 @@ app.get("/api/aprobaciones/responder", (req, res) => {
 
       try {
         // Procesar la aprobación (también actualiza el estatus y guarda nota)
-        await procesarAprobacion(aprobacion.idAprobacion, accion, "[Respuesta vía correo]");
+        await procesarAprobacion(aprobacion.idAprobacion, accion, "");
 
         // Inhabilitar el token para que no pueda usarse de nuevo
         db.query(

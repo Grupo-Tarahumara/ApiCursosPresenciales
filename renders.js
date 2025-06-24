@@ -133,7 +133,7 @@ export function renderDatosHtml(tipo, datos) {
                 `;
 
     case "Nueva Posición":
-  return `
+      return `
     <div class="p-6 bg-white rounded-xl shadow space-y-4">
       <p><strong>Número de empleado:</strong> ${datos.num_empleado}</p>
       <p><strong>Motivo:</strong> ${datos.motivo}</p>
@@ -230,41 +230,51 @@ export function datosSolicitanteHtml(Nombre, num_empleado, Puesto, Departamento,
 export function generarCorreoRechazo(datosSolicitante, aprobacion) {
   return `
     <div style="font-family: 'Segoe UI', sans-serif; background-color: #f4f4f7; padding: 40px;">
-                                      <div style="max-width: 600px; margin: 0 auto; background: #fff; border-radius: 12px; padding: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
-                                        <h2 style="color: #dc3545; text-align: center;">❌ Movimiento rechazado</h2>
-                                        <p>Hola <strong>${datosSolicitante.name}</strong>,</p>
-                                        <p>Lamentamos informarte que tu solicitud de <strong>${solicitante?.tipo_movimiento || "movimiento"}</strong> fue <strong>rechazada</strong> por el aprobador <strong>${aprobacion.id_aprobador}</strong>.</p>
-                                        <p><strong>Motivo del rechazo:</strong></p>
-                                        <blockquote style="background: #fbeaea; padding: 12px; border-left: 4px solid #dc3545; border-radius: 8px; font-style: italic; color: #a94442;">
-                                          ${datosSolicitante.nota || "No se especificó un motivo"}
-                                        </blockquote>
-                                        <p style="margin-top: 16px;">Por favor, contacta a tu supervisor o recursos humanos si tienes dudas o deseas más información.</p>
-                                        <p style="font-size: 13px; color: #999;">Este mensaje fue generado automáticamente por el sistema de recursos humanos de Grupo Tarahumara.</p>
-                                      </div>
-                                    </div>
+      <div style="max-width: 600px; margin: 0 auto; background: #fff; border-radius: 12px; padding: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+        <h2 style="color: #dc3545; text-align: center;">❌ Movimiento rechazado</h2>
+        <p>Hola <strong>${datosSolicitante.name}</strong>,</p>
+        <p>Lamentamos informarte que tu solicitud de <strong>${datosSolicitante.tipo_movimiento || "movimiento"}</strong> fue <strong>rechazada</strong> por <strong>${aprobacion.nombre_aprobador}</strong>.</p>
+        <p><strong>Motivo del rechazo:</strong></p>
+        <blockquote style="background: #fbeaea; padding: 12px; border-left: 4px solid #dc3545; border-radius: 8px; font-style: italic; color: #a94442;">
+          ${datosSolicitante.nota || "No se especificó un motivo"}
+        </blockquote>
+        <p style="margin-top: 16px;">Por favor, contacta a tu supervisor o recursos humanos si tienes dudas o deseas más información.</p>
+        <p style="font-size: 13px; color: #999;">Este mensaje fue generado automáticamente por el sistema de recursos humanos de Grupo Tarahumara.</p>
+      </div>
+    </div>
   `;
 }
 
 export function generarCorreoAprobacion(solicitante, datos) {
+  const detallesMovimiento = renderDatosHtml(solicitante.tipo_movimiento, datos || {});
   return `
-                            <div style="font-family: 'Segoe UI', sans-serif; background-color: #f4f4f7; padding: 40px;">
-                              <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; padding: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
-                                <h2 style="color: #28a745; text-align: center;">✅ ¡Tu movimiento fue aprobado!</h2>
-                                <p>Hola <strong>${solicitante.name}</strong>,</p>
-                                <p>Nos complace informarte que tu solicitud de <strong>${solicitante.tipo_movimiento}</strong> ha sido <strong>aprobada por todos los involucrados</strong> y se ha registrado exitosamente.</p>
-                                <hr style="margin: 20px 0; border: none; border-top: 1px solid #eee;" />
-                                ${solicitante.nota ? `
-                                  <div style="margin-top: 20px;">
-                                    <p><strong>Comentarios del aprobador:</strong></p>
-                                    <p style="background: #fffbea; padding: 12px; border-left: 4px solid #ffec99; border-radius: 6px; font-style: italic;">
-                                      ${solicitante.nota}
-                                    </p>
-                                  </div>
-                                ` : ""}
-                                <p style="color: #555;">Gracias por utilizar el sistema de recursos humanos de Grupo Tarahumara.</p>
-                                <p style="font-size: 13px; color: #999;">Este mensaje es automático. No respondas directamente.</p>
-                              </div>
-                            </div>
+                             <div style="font-family: 'Segoe UI', sans-serif; background-color: #f4f4f7; padding: 40px;">
+      <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; padding: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+        <h2 style="color: #28a745; text-align: center;">✅ ¡Tu movimiento fue aprobado!</h2>
+        <p>Hola <strong>${solicitante.name}</strong>,</p>
+        <p>Nos complace informarte que tu solicitud de <strong>${solicitante.tipo_movimiento}</strong> ha sido <strong>aprobada por todos los involucrados</strong> y se ha registrado exitosamente.</p>
+
+        <hr style="margin: 20px 0; border: none; border-top: 1px solid #eee;" />
+
+        ${solicitante.nota ? `
+          <div style="margin-top: 20px;">
+            <p><strong>Comentarios del aprobador:</strong></p>
+            <p style="background: #fffbea; padding: 12px; border-left: 4px solid #ffec99; border-radius: 6px; font-style: italic;">
+              ${solicitante.nota}
+            </p>
+          </div>
+        ` : ""}
+        ${detallesMovimiento ? `
+          <div style="margin-top: 24px;">
+            <h3 style="color: #444;">📋 Detalles del movimiento:</h3>
+            ${detallesMovimiento}
+          </div>
+        ` : ""}
+
+        <p style="color: #555;">Gracias por utilizar el sistema de recursos humanos de Grupo Tarahumara.</p>
+        <p style="font-size: 13px; color: #999;">Este mensaje es automático. No respondas directamente.</p>
+      </div>
+    </div>
   `;
 }
 

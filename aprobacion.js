@@ -52,6 +52,14 @@ export async function procesarAprobacion(idAprobacion, estatus, nota) {
     const movimientoId = aprobacion.idMovimiento;
 
     if (estatus === "rechazado") {
+
+      const [[aprobadorInfo]] = await db.query(`
+        SELECT u.email, u.name
+        FROM users u
+        JOIN aprobaciones_movimientos a ON a.id_aprobador = u.num_empleado
+        WHERE a.idAprobacion = ?
+      `, [idAprobacion]);
+      aprobacion.nombre_aprobador = aprobadorInfo?.name || `Empleado ${aprobacion.id_aprobador}`;
       console.log("🚫 Rechazando movimiento...");
 
       const [[solicitante]] = await db.query(`
@@ -134,7 +142,7 @@ export async function procesarAprobacion(idAprobacion, estatus, nota) {
         }
 
         await enviarCorreo(
-          solicitante.email,
+          solicitante.email + "," + process.env.EMAIL_ADMIN,
           "✅ Movimiento de personal aprobado",
           generarCorreoAprobacion(solicitante, datos)
         );
