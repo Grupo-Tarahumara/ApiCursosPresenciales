@@ -33,7 +33,7 @@ const port = process.env.SERVER_PORT || 3041;
 
 const allowedOrigins = [
   'http://localhost:3000', // para desarrollo
-  'https://capacitacion.in.grupotarahumara.com.mx',
+  'https://site.grupotarahumara.com.mx',
   'https://site-dev.in.grupotarahumara.com.mx',
 ];
 
