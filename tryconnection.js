@@ -33,7 +33,8 @@ const port = process.env.SERVER_PORT || 3041;
 
 const allowedOrigins = [
   'http://localhost:3000', // para desarrollo
-  'https://capacitacion.in.grupotarahumara.com.mx', // para producción
+  'https://capacitacion.in.grupotarahumara.com.mx',
+  'https://site-dev.in.grupotarahumara.com.mx',
 ];
 
 app.use(cors({
@@ -41,11 +42,13 @@ app.use(cors({
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
+      console.error(`[CORS] Rechazado origen: ${origin}`);
       callback(new Error('Origen no permitido por CORS'));
     }
   },
   credentials: true,
 }));
+
 app.use('/public', express.static('public'));
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ limit: "50mb", extended: true }));
