@@ -36,7 +36,7 @@ const allowedOrigins = [
   'https://site.grupotarahumara.com.mx',
   'https://site-dev.in.grupotarahumara.com.mx',
   'https://capacitacion.in.grupotarahumara.com.mx',
-  'https://app-img.in.grupotarahumara.com.mx'
+  'http://app-img.172.16.15.30.sslip.io'
 ];
 
 app.use(cors({
