@@ -48,7 +48,7 @@ export const getEmpleadoInfo = async (numEmpleado) => {
             WHEN p.Puesto LIKE '%Sub Jefe%' OR p.Puesto LIKE '%Subjefe%' THEN 'Subjefe'
             WHEN p.Puesto LIKE '%Jefe%' THEN 'Jefe'
             WHEN p.Puesto LIKE '%Gerente%' OR p.Puesto LIKE '%Gte%' THEN 'Gerente'
-            WHEN p.Puesto LIKE '%Dirección%' OR p.Puesto = 'Direccion General' THEN 'Dirección'
+            WHEN p.Puesto LIKE '%Dirección%' OR p.Puesto = 'Direccion General' THEN 'Direccion'
             WHEN p.Puesto LIKE '%Director%' THEN 'Director'
             ELSE 'Usuario común'
           END AS Rol

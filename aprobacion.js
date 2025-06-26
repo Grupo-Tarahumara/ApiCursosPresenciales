@@ -29,7 +29,7 @@ const returnConnection = () => {
 
 export async function procesarAprobacion(idAprobacion, estatus, nota) {
   let datosSolicitante = null;
-  const db = await returnConnection(); 
+  const db = await returnConnection();
 
   try {
     await db.beginTransaction();
@@ -157,16 +157,16 @@ export async function procesarAprobacion(idAprobacion, estatus, nota) {
 
     console.log("🔎 Hay pendientes, notificando siguiente aprobador...");
 
-const [[mov]] = await db.query(`
+    const [[mov]] = await db.query(`
   SELECT tipo_movimiento, datos_json, comentarios
   FROM movimientos_personal
   WHERE idMovimiento = ?
 `, [movimientoId]);
 
-const tipoMovimiento = mov.tipo_movimiento || "";
-const excepcion64 = ["nueva posición", "aumento plantilla"].includes(tipoMovimiento);
+    const tipoMovimiento = mov.tipo_movimiento || "";
+    const excepcion64 = ["nueva posición", "aumento plantilla"].includes(tipoMovimiento);
 
-const [[siguiente]] = await db.query(`
+    const [[siguiente]] = await db.query(`
   SELECT a.id_aprobador, u.email, a.token_aprobacion, u.name
   FROM aprobaciones_movimientos a
   JOIN users u ON a.id_aprobador = u.num_empleado
@@ -184,79 +184,79 @@ const [[siguiente]] = await db.query(`
 `, [movimientoId]);
 
     if (!siguiente && !excepcion64) {
-  // Si no hay siguiente porque era 64 y fue omitido, y no es excepción
-  console.log("⏭️ Último aprobador omitido (ID 64), aprobando directamente...");
+      // Si no hay siguiente porque era 64 y fue omitido, y no es excepción
+      console.log("⏭️ Último aprobador omitido (ID 64), aprobando directamente...");
 
-  await db.query(`
+      await db.query(`
     UPDATE movimientos_personal
     SET estatus = 'aprobado', nota = ?
     WHERE idMovimiento = ?
   `, [nota, movimientoId]);
 
-  const [[solicitante]] = await db.query(`
+      const [[solicitante]] = await db.query(`
     SELECT m.num_empleado, u.email, u.name, datos_json, tipo_movimiento, nota
     FROM movimientos_personal m
     JOIN users u ON m.num_empleado = u.num_empleado
     WHERE m.idMovimiento = ?
   `, [movimientoId]);
 
-  if (solicitante) {
-    let datos = {};
-    try {
-      datos = typeof solicitante.datos_json === 'string'
-        ? JSON.parse(solicitante.datos_json)
-        : solicitante.datos_json;
-    } catch (e) {
-      console.error("❌ Error parseando datos_json:", e);
-    }
+      if (solicitante) {
+        let datos = {};
+        try {
+          datos = typeof solicitante.datos_json === 'string'
+            ? JSON.parse(solicitante.datos_json)
+            : solicitante.datos_json;
+        } catch (e) {
+          console.error("❌ Error parseando datos_json:", e);
+        }
 
-    if (solicitante.tipo_movimiento === "Vacaciones") {
-      const { vacaciones_acumuladas_restantes: acumuladas, vacaciones_ley_restantes: ley } = datos;
-      if (typeof acumuladas === "number" && typeof ley === "number") {
-        await updateVacaciones(solicitante.num_empleado, acumuladas, ley);
-        console.log("✅ Vacaciones actualizadas en SQL Server");
+        if (solicitante.tipo_movimiento === "Vacaciones") {
+          const { vacaciones_acumuladas_restantes: acumuladas, vacaciones_ley_restantes: ley } = datos;
+          if (typeof acumuladas === "number" && typeof ley === "number") {
+            await updateVacaciones(solicitante.num_empleado, acumuladas, ley);
+            console.log("✅ Vacaciones actualizadas en SQL Server");
+          }
+        }
+
+        await enviarCorreo(
+          solicitante.email,
+          "✅ Movimiento de personal aprobado",
+          generarCorreoAprobacion(solicitante, datos)
+        );
+        console.log("📧 Correo de aprobación enviado");
       }
-    }
 
-    await enviarCorreo(
-      solicitante.email,
-      "✅ Movimiento de personal aprobado",
-      generarCorreoAprobacion(solicitante, datos)
-    );
-    console.log("📧 Correo de aprobación enviado");
-  }
-
-  await db.commit();
-  await db.end();
-  console.log("✅ Movimiento aprobado automáticamente por omisión del aprobador 64");
-  return;
+      await db.commit();
+      await db.end();
+      console.log("✅ Movimiento aprobado automáticamente por omisión del aprobador 64");
+      return;
     }
     if (siguiente) {
-  const datos = typeof mov.datos_json === 'string' ? JSON.parse(mov.datos_json) : mov.datos_json;
-  const htmlExtra = renderDatosHtml(mov.tipo_movimiento, datos);
-  const datosHtml = datosSolicitanteHtml(
-    datos.Nombre,
-    datos.num_empleado,
-    datos.Puesto,
-    datos.Departamento,
-    datos.FechaIngreso,
-    datos.Email
-  );
+      const datos = typeof mov.datos_json === 'string' ? JSON.parse(mov.datos_json) : mov.datos_json;
+      const htmlExtra = renderDatosHtml(mov.tipo_movimiento, datos);
+      const datosHtml = datosSolicitanteHtml(
+        datos.Nombre,
+        datos.num_empleado,
+        datos.Puesto,
+        datos.Departamento,
+        datos.FechaIngreso,
+        datos.Email
+      );
 
-  const enlace = `${process.env.API_BASE_URL}/api/aprobaciones/responder?token=${siguiente.token_aprobacion}`;
+      const enlace = `${process.env.API_BASE_URL}/api/aprobaciones/responder?token=${siguiente.token_aprobacion}`;
 
-  await enviarCorreo(
-    siguiente.email,
-    "Nueva solicitud de movimiento de personal",
-    generarCorreoAprobador(siguiente.name, mov.tipo_movimiento, htmlExtra, datosHtml, mov.comentarios, enlace)
-  );
+      await enviarCorreo(
+        siguiente.email,
+        "Nueva solicitud de movimiento de personal",
+        generarCorreoAprobador(siguiente.name, mov.tipo_movimiento, htmlExtra, datosHtml, mov.comentarios, enlace)
+      );
 
-  console.log("📧 Correo enviado a siguiente aprobador");
-}
+      console.log("📧 Correo enviado a siguiente aprobador");
+    }
 
-await db.commit();
-await db.end();
-console.log('✅ Movimiento parcialmente aprobado y transacción finalizada');
+    await db.commit();
+    await db.end();
+    console.log('✅ Movimiento parcialmente aprobado y transacción finalizada');
   } catch (error) {
     console.error("❌ Error en proceso de aprobación:", error);
     await db.rollback();
