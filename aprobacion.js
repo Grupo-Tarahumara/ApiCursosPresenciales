@@ -30,7 +30,7 @@ const returnConnection = () => {
 export async function procesarAprobacion(idAprobacion, estatus, nota) {
   let datosSolicitante = null;
   const db = await returnConnection();
-
+ const movimientosRequisiciones = ["Sustitución", "Nueva Posición", "Aumento Plantilla"];
   try {
     await db.beginTransaction();
     console.log(`🔄 Procesando aprobación ID ${idAprobacion} con estatus ${estatus} y nota ${nota}`);
@@ -141,8 +141,15 @@ export async function procesarAprobacion(idAprobacion, estatus, nota) {
           }
         }
 
+        const destinatarios = movimientosRequisiciones.includes(solicitante.tipo_movimiento)
+        ? process.env.EMAIL_REQUISICIONES
+        : process.env.EMAIL_MOVIMIENTOS;
+
+        console.log("📧 Enviando correo de aprobación al solicitante:", solicitante.email);
+        console.log("📧 Destinatarios adicionales:", destinatarios);
+
         await enviarCorreo(
-          solicitante.email + "," + process.env.EMAIL_ADMIN,
+          solicitante.email + "," + destinatarios,
           "✅ Movimiento de personal aprobado",
           generarCorreoAprobacion(solicitante, datos)
         );
@@ -218,8 +225,15 @@ export async function procesarAprobacion(idAprobacion, estatus, nota) {
           }
         }
 
+        const destinatarios = movimientosRequisiciones.includes(solicitante.tipo_movimiento)
+        ? process.env.EMAIL_REQUISICIONES
+        : process.env.EMAIL_MOVIMIENTOS;
+
+        console.log("📧 Enviando correo de aprobación al solicitante:", solicitante.email);
+        console.log("📧 Destinatarios adicionales:", destinatarios);
+
         await enviarCorreo(
-          solicitante.email,
+          solicitante.email + "," + destinatarios,
           "✅ Movimiento de personal aprobado",
           generarCorreoAprobacion(solicitante, datos)
         );
@@ -244,7 +258,7 @@ export async function procesarAprobacion(idAprobacion, estatus, nota) {
       );
 
       const enlace = `${process.env.API_BASE_URL}/api/aprobaciones/responder?token=${siguiente.token_aprobacion}`;
-
+      
       await enviarCorreo(
         siguiente.email,
         "Nueva solicitud de movimiento de personal",

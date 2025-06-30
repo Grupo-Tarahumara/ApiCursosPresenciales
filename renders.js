@@ -231,6 +231,9 @@ export function generarCorreoRechazo(datosSolicitante, aprobacion) {
   return `
     <div style="font-family: 'Segoe UI', sans-serif; background-color: #f4f4f7; padding: 40px;">
       <div style="max-width: 600px; margin: 0 auto; background: #fff; border-radius: 12px; padding: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+      <div style="text-align: center;">
+                                    <img src="https://custom-images.strikinglycdn.com/res/hrscywv4p/image/upload/c_limit,fl_lossy,h_300,w_300,f_auto,q_auto/6088316/314367_858588.png" />
+                                  </div>
         <h2 style="color: #dc3545; text-align: center;">❌ Movimiento rechazado</h2>
         <p>Hola <strong>${datosSolicitante.name}</strong>,</p>
         <p>Lamentamos informarte que tu solicitud de <strong>${datosSolicitante.tipo_movimiento || "movimiento"}</strong> fue <strong>rechazada</strong> por <strong>${aprobacion.nombre_aprobador}</strong>.</p>
@@ -248,8 +251,11 @@ export function generarCorreoRechazo(datosSolicitante, aprobacion) {
 export function generarCorreoAprobacion(solicitante, datos) {
   const detallesMovimiento = renderDatosHtml(solicitante.tipo_movimiento, datos || {});
   return `
-                             <div style="font-family: 'Segoe UI', sans-serif; background-color: #f4f4f7; padding: 40px;">
+    <div style="font-family: 'Segoe UI', sans-serif; background-color: #f4f4f7; padding: 40px;">
       <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; padding: 30px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+      <div style="text-align: center;">
+                                    <img src="https://custom-images.strikinglycdn.com/res/hrscywv4p/image/upload/c_limit,fl_lossy,h_300,w_300,f_auto,q_auto/6088316/314367_858588.png" />
+                                  </div>
         <h2 style="color: #28a745; text-align: center;">✅ ¡Tu movimiento fue aprobado!</h2>
         <p>Hola <strong>${solicitante.name}</strong>,</p>
         <p>Nos complace informarte que tu solicitud de <strong>${solicitante.tipo_movimiento}</strong> ha sido <strong>aprobada por todos los involucrados</strong> y se ha registrado exitosamente.</p>

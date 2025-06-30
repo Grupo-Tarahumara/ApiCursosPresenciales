@@ -1060,82 +1060,144 @@ app.post("/api/movimientos", (req, res) => {
   console.log("📥 Solicitud recibida en /api/movimientos");
   console.log("📄 Body recibido:", req.body);
 
-  const { num_empleado, tipo_movimiento,fecha_incidencia, datos_json, comentarios, nivel_aprobacion } = req.body;
+  const { num_empleado, tipo_movimiento, fecha_incidencia, datos_json, comentarios, nivel_aprobacion } = req.body;
 
   const fechas = datos_json.fechas;
   function iniciarTransaccion() {
-  if (tipo_movimiento === 'Vacaciones') {
-    if (
-      !num_empleado ||
-      !Array.isArray(fechas) || fechas.length === 0 ||
-      typeof datos_json !== 'object' ||
-      typeof tipo_movimiento !== 'string' || tipo_movimiento.trim() === ''
-    ) {
-      console.warn("❌ [WARN] Datos incompletos o malformados");
-      return res.status(400).json({ success: false, message: 'Datos incompletos o incorrectos' });
-    }
-  }
-
-  db.beginTransaction((err) => {
-    if (err) {
-      console.error("❌ Error iniciando transacción:", err);
-      return res.status(500).json({ success: false, message: "Error iniciando transacción" });
+    if (tipo_movimiento === 'Vacaciones') {
+      if (
+        !num_empleado ||
+        !Array.isArray(fechas) || fechas.length === 0 ||
+        typeof datos_json !== 'object' ||
+        typeof tipo_movimiento !== 'string' || tipo_movimiento.trim() === ''
+      ) {
+        console.warn("❌ [WARN] Datos incompletos o malformados");
+        return res.status(400).json({ success: false, message: 'Datos incompletos o incorrectos' });
+      }
     }
 
-    console.log("🔄 Transacción iniciada");
+    db.beginTransaction((err) => {
+      if (err) {
+        console.error("❌ Error iniciando transacción:", err);
+        return res.status(500).json({ success: false, message: "Error iniciando transacción" });
+      }
 
-    const insertMovimientoQuery = `
+      console.log("🔄 Transacción iniciada");
+
+      const insertMovimientoQuery = `
       INSERT INTO movimientos_personal (num_empleado, tipo_movimiento, fecha_incidencia, datos_json, comentarios, estatus, nivel_aprobacion)
       VALUES (?, ?, ?, ?, ?, 'pendiente', ?)
     `;
 
-    db.query(insertMovimientoQuery, [num_empleado, tipo_movimiento, fecha_incidencia, JSON.stringify(datos_json), comentarios, nivel_aprobacion], (err, result) => {
-      if (err) {
-        console.error("❌ Error insertando movimiento:", err);
-        return db.rollback(() => {
-          res.status(500).json({ success: false, message: "Error insertando movimiento" });
-        });
-      }
+      db.query(insertMovimientoQuery, [num_empleado, tipo_movimiento, fecha_incidencia, JSON.stringify(datos_json), comentarios, nivel_aprobacion], (err, result) => {
+        if (err) {
+          console.error("❌ Error insertando movimiento:", err);
+          return db.rollback(() => {
+            res.status(500).json({ success: false, message: "Error insertando movimiento" });
+          });
+        }
 
-      const idMovimiento = result.insertId;
-      console.log("✅ Movimiento insertado con ID:", idMovimiento);
+        const idMovimiento = result.insertId;
+        console.log("✅ Movimiento insertado con ID:", idMovimiento);
 
-      const empleado = empleadosDb.find(emp => emp.Personal === num_empleado.toString().padStart(4, '0'));
+        const empleado = empleadosDb.find(emp => emp.Personal === num_empleado.toString().padStart(4, '0'));
 
-      if (!empleado) {
-        console.error(`❌ Empleado ${num_empleado} no encontrado en empleadosDb`);
-        return db.rollback(() => {
-          res.status(404).json({ success: false, message: "Empleado no encontrado en base externa" });
-        });
-      }
+        if (!empleado) {
+          console.error(`❌ Empleado ${num_empleado} no encontrado en empleadosDb`);
+          return db.rollback(() => {
+            res.status(404).json({ success: false, message: "Empleado no encontrado en base externa" });
+          });
+        }
 
-      const aprobadores = [];
-      let orden = 1;
+        const aprobadores = [];
+        let orden = 1;
 
-      const excepcion64 = ["Nueva Posición", "Aumento Plantilla"].includes(tipo_movimiento);
+        const excepcion64 = ["Nueva Posición", "Aumento Plantilla"].includes(tipo_movimiento);
 
-      for (let nivel = 1; nivel <= nivel_aprobacion; nivel++) {
-        const aprobadorId = empleado[`AprobadorNivel${nivel}`];
-        if (!aprobadorId) continue;
-        if (parseInt(aprobadorId) === 64 && !excepcion64) continue;
+        for (let nivel = 1; nivel <= nivel_aprobacion; nivel++) {
+          const aprobadorId = empleado[`AprobadorNivel${nivel}`];
+          if (!aprobadorId) continue;
+          if (parseInt(aprobadorId) === 64 && !excepcion64) continue;
 
-        const token = crypto.randomBytes(32).toString('hex');
-        aprobadores.push([idMovimiento, orden++, aprobadorId, 'pendiente', token]);
-      }
+          const token = crypto.randomBytes(32).toString('hex');
+          aprobadores.push([idMovimiento, orden++, aprobadorId, 'pendiente', token]);
+        }
 
-      // 🧠 Si el primer aprobador sería 64 omitido, aprobar directamente
-      if (aprobadores.length === 0) {
-        console.warn("⚠️ No se encontraron aprobadores válidos. Aprobando automáticamente...");
+        // 🧠 Si el primer aprobador sería 64 omitido, aprobar directamente
+        if (aprobadores.length === 0) {
+          console.warn("⚠️ No se encontraron aprobadores válidos. Aprobando automáticamente...");
 
+          db.query(`
+    UPDATE movimientos_personal
+    SET estatus = 'aprobado', nota = ?
+    WHERE idMovimiento = ?
+  `, [comentarios || '', idMovimiento], async (err) => {
+            if (err) {
+              console.error("❌ Error al aprobar automáticamente:", err);
+              return db.rollback(() => {
+                res.status(500).json({ success: false, message: "Error al aprobar automáticamente" });
+              });
+            }
+
+            db.commit(async (err) => {
+              if (err) {
+                console.error("❌ Error en commit:", err);
+                return db.rollback(() => {
+                  res.status(500).json({ success: false, message: "Error en commit final" });
+                });
+              }
+
+              console.log("✅ Movimiento aprobado automáticamente");
+
+              // 🔔 Enviar correo al solicitante y auditores
+
+              const destinatarios =
+                ["Nueva Posición", "Sustitución", "Aumento Plantilla"].includes(tipo_movimiento)
+                  ? process.env.EMAIL_REQUISICIONES
+                  : process.env.EMAIL_MOVIMIENTOS;
+
+              const auditores = process.env.EMAIL_AUDITORES;
+              const destinatariosCompletos = [empleado.Email, destinatarios, auditores]
+                .filter(Boolean)
+                .join(",");
+
+              try {
+                await enviarCorreo(
+                  destinatariosCompletos,
+                  "✅ Movimiento de personal aprobado automáticamente",
+                  generarCorreoAprobacion(
+                    {
+                      num_empleado,
+                      email: empleado.Email,
+                      name: empleado.Nombre,
+                      tipo_movimiento,
+                      nota: comentarios || '',
+                      datos_json: datos_json
+                    },
+                    datos_json
+                  )
+                );
+                console.log("📧 Correo de aprobación automática enviado a:", destinatariosCompletos);
+              } catch (e) {
+                console.error("❌ Error al enviar correo automático:", e.message);
+              }
+
+              return res.json({ success: true, idMovimiento, aprobado: true });
+            });
+          });
+
+          return;
+        }
+
+        // Insertar aprobadores y enviar correo
         db.query(`
-          UPDATE movimientos_personal
-          SET estatus = 'aprobado', nota = ?
-          WHERE idMovimiento = ?
-        `, [comentarios || '', idMovimiento], (err) => {
+        INSERT INTO aprobaciones_movimientos (idMovimiento, orden, id_aprobador, estatus, token_aprobacion)
+        VALUES ?
+      `, [aprobadores], (err) => {
           if (err) {
-            console.error("❌ Error al aprobar automáticamente:", err);
+            console.error("❌ Error insertando aprobadores:", err);
             return db.rollback(() => {
-              res.status(500).json({ success: false, message: "Error al aprobar automáticamente" });
+              res.status(500).json({ success: false, message: "Error insertando aprobadores" });
             });
           }
 
@@ -1147,91 +1209,64 @@ app.post("/api/movimientos", (req, res) => {
               });
             }
 
-            console.log("✅ Movimiento aprobado automáticamente");
-            return res.json({ success: true, idMovimiento, aprobado: true });
+            console.log("✅ Movimiento guardado con aprobadores");
+            res.json({ success: true, idMovimiento });
+
+            // Obtener el primer aprobador para enviar correo
+            const [primerAprobador] = aprobadores;
+            if (!primerAprobador) return;
+
+            const aprobadorId = primerAprobador[2];
+            const token = primerAprobador[4];
+
+            db.query(
+              `SELECT email, name FROM users WHERE num_empleado = ?`,
+              [aprobadorId],
+              (err, results) => {
+                if (err) {
+                  console.error("❌ Error obteniendo datos del aprobador:", err);
+                  return;
+                }
+
+                if (results.length === 0 || !results[0].email) {
+                  console.warn("⚠️ No se encontró email del aprobador. Abortando envío.");
+                  return;
+                }
+
+                const { email, name } = results[0];
+                const enlace = `${process.env.API_BASE_URL}/api/aprobaciones/responder?token=${token}`;
+                const datosHtml = datosSolicitanteHtml(
+                  empleado.Nombre,
+                  num_empleado,
+                  empleado.Puesto,
+                  empleado.Departamento,
+                  empleado.FechaIngreso,
+                  empleado.Email
+                );
+                const htmlExtra = renderDatosHtml(tipo_movimiento, datos_json);
+
+                console.log("📨 Preparando envío de correo...");
+                console.log("📩 Destinatario:", email);
+
+                enviarCorreo(
+                  email,
+                  "Nueva solicitud de movimiento de personal",
+                  generarCorreoAprobador(name, tipo_movimiento, htmlExtra, datosHtml, comentarios, enlace, fecha_incidencia)
+                )
+                  .then(() => {
+                    console.log("📧 Correo enviado al primer aprobador:", email);
+                  })
+                  .catch((e) => {
+                    console.error("❌ Error al enviar correo:", e.message);
+                  });
+              }
+            );
+
           });
-        });
-        return;
-      }
-
-      // Insertar aprobadores y enviar correo
-      db.query(`
-        INSERT INTO aprobaciones_movimientos (idMovimiento, orden, id_aprobador, estatus, token_aprobacion)
-        VALUES ?
-      `, [aprobadores], (err) => {
-        if (err) {
-          console.error("❌ Error insertando aprobadores:", err);
-          return db.rollback(() => {
-            res.status(500).json({ success: false, message: "Error insertando aprobadores" });
-          });
-        }
-
-        db.commit((err) => {
-          if (err) {
-            console.error("❌ Error en commit:", err);
-            return db.rollback(() => {
-              res.status(500).json({ success: false, message: "Error en commit final" });
-            });
-          }
-
-          console.log("✅ Movimiento guardado con aprobadores");
-          res.json({ success: true, idMovimiento });
-
-          // Obtener el primer aprobador para enviar correo
-const [primerAprobador] = aprobadores;
-if (!primerAprobador) return;
-
-const aprobadorId = primerAprobador[2];
-const token = primerAprobador[4];
-
-db.query(
-  `SELECT email, name FROM users WHERE num_empleado = ?`,
-  [aprobadorId],
-  (err, results) => {
-    if (err) {
-      console.error("❌ Error obteniendo datos del aprobador:", err);
-      return;
-    }
-
-    if (results.length === 0 || !results[0].email) {
-      console.warn("⚠️ No se encontró email del aprobador. Abortando envío.");
-      return;
-    }
-
-    const { email, name } = results[0];
-    const enlace = `${process.env.API_BASE_URL}/api/aprobaciones/responder?token=${token}`;
-    const datosHtml = datosSolicitanteHtml(
-      empleado.Nombre,
-      num_empleado,
-      empleado.Puesto,
-      empleado.Departamento,
-      empleado.FechaIngreso,
-      empleado.Email
-    );
-    const htmlExtra = renderDatosHtml(tipo_movimiento, datos_json);
-
-    console.log("📨 Preparando envío de correo...");
-    console.log("📩 Destinatario:", email);
-
-    enviarCorreo(
-      email,
-      "Nueva solicitud de movimiento de personal",
-      generarCorreoAprobador(name, tipo_movimiento, htmlExtra, datosHtml, comentarios, enlace, fecha_incidencia)
-    )
-    .then(() => {
-      console.log("📧 Correo enviado al primer aprobador:", email);
-    })
-    .catch((e) => {
-      console.error("❌ Error al enviar correo:", e.message);
-    });
-  }
-);
-
         });
       });
     });
-  });
-}
+  }
 
   if (tipo_movimiento === "Retardo justificado") {
     const countQuery = `
@@ -1347,7 +1382,7 @@ app.get('/api/movimientos/requisiciones/:num_empleado', (req, res) => {
 });
 
 app.get('/api/movimientos', (req, res) => {
-const query = `
+  const query = `
   SELECT 
     mp.idMovimiento,
     mp.num_empleado,
@@ -1755,6 +1790,6 @@ app.get('/api/plan-estudios/:num_empleado/resumen', (req, res) => {
 
 
 //open port 
-app.listen(port, '0.0.0.0',  () => {
+app.listen(port, '0.0.0.0', () => {
   console.log(`API running at http://localhost:${port}`);
 });
