@@ -118,34 +118,34 @@ export const getAsistenciaPorCodigo = async (codigo) => {
       .input('codigo', sql.VarChar, codigo)
       .query(`
         WITH checadas_agrupadas AS (
-            SELECT
-                CODIGO,
-                FECHA,
-                MIN(HORA) AS HORA_ENTRADA,
-                MAX(HORA) AS HORA_SALIDA
-            FROM checadas
-            GROUP BY CODIGO, FECHA
-        )
-        SELECT
-            id.CODIGO,
-            id.NOMBRE,
-            id.FECHA,
-            id.DIA_SEM,
-            id.E1 AS ENTRADA_PROGRAMADA,
-            id.S1 AS SALIDA_PROGRAMADA,
-            ic.INC,
-            ic.NOMINC AS NOMBRE_INCIDENCIA,
-            ic.VALOR AS VALOR_INCIDENCIA,
-            id.CVEINC,
-            id.NOMINC AS TIPO_ASISTENCIA
-        FROM inc_dia id
-        LEFT JOIN checadas_agrupadas ca
-            ON id.CODIGO = ca.CODIGO AND id.FECHA = ca.FECHA
-        LEFT JOIN inc_checadas ic
-            ON id.CODIGO = ic.CODIGO AND id.FECHA = ic.FECHA
-        WHERE id.CODIGO = @codigo
-            AND id.FECHA >= DATEADD(DAY, -30, GETDATE())
-        ORDER BY id.FECHA, id.CODIGO
+          SELECT
+              CAST(CODIGO AS INT) AS CODIGO,
+              FECHA,
+              MIN(HORA) AS HORA_ENTRADA,
+              MAX(HORA) AS HORA_SALIDA
+          FROM checadas
+          GROUP BY CAST(CODIGO AS INT), FECHA
+      )
+      SELECT
+          id.CODIGO,
+          id.NOMBRE,
+          id.FECHA,
+          id.DIA_SEM,
+          id.E1 AS ENTRADA_PROGRAMADA,
+          id.S1 AS SALIDA_PROGRAMADA,
+          ic.INC,
+          ic.NOMINC AS NOMBRE_INCIDENCIA,
+          ic.VALOR AS VALOR_INCIDENCIA,
+          id.CVEINC,
+          id.NOMINC AS TIPO_ASISTENCIA
+      FROM inc_dia id
+      LEFT JOIN checadas_agrupadas ca
+          ON CAST(id.CODIGO AS INT) = ca.CODIGO AND id.FECHA = ca.FECHA
+      LEFT JOIN inc_checadas ic
+          ON CAST(id.CODIGO AS INT) = CAST(ic.CODIGO AS INT) AND id.FECHA = ic.FECHA
+      WHERE CAST(id.CODIGO AS INT) = CAST(@codigo AS INT)
+          AND id.FECHA >= DATEADD(DAY, -30, GETDATE())
+      ORDER BY id.FECHA, id.CODIGO
       `);
     return result.recordset;
   } catch (error) {

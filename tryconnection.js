@@ -1100,7 +1100,7 @@ app.post("/api/movimientos", (req, res) => {
         const idMovimiento = result.insertId;
         console.log("✅ Movimiento insertado con ID:", idMovimiento);
 
-        const empleado = empleadosDb.find(emp => emp.Personal === num_empleado.toString().padStart(4, '0'));
+      const empleado = empleadosDb.find(emp => emp.Personal === num_empleado.toString());
 
         if (!empleado) {
           console.error(`❌ Empleado ${num_empleado} no encontrado en empleadosDb`);
