@@ -453,203 +453,6 @@ app.post('/eliminarUsuario', (req, res) => {
   });
 });
 
-app.post('/actualizarCurso', (req, res) => {
-  const { id_course, title, description, tutor, progress, category } = req.body;
-
-  console.log(req.body)
-  const query = `UPDATE cursos_presenciales SET title= '${title}', description = '${description}',tutor= '${tutor}', category ='${category}' WHERE id_course= ${id_course}`;
-
-  try {
-    db.query(query, (err, result) => {
-      if (err) {
-        console.error("Error al actualizar el usuario:", err);
-        res.status(500).send('Error en la base de datos');
-      } else {
-        res.json(result);
-      }
-    });
-  } catch (e) {
-    console.error("Error en el servidor:", e);
-    res.status(500).send('Error en el servidor');
-  }
-});
-
-app.delete('/eliminarCursoTomado', (req, res) => {
-  const { id_usuario, id_course, start_date } = req.body;
-
-  // Validar entrada
-  if (!id_usuario || !id_course) {
-    return res.status(400).json({ error: 'Datos incompletos' });
-  }
-
-  console.log("Eliminando curso:", req.body);
-
-  const query = `DELETE FROM usuario_curso WHERE id_usuario = ? AND id_course = ? AND start_date = ?`;
-
-  db.query(query, [id_usuario, id_course, start_date], (err, result) => {
-    if (err) {
-      console.error("Error al eliminar el curso tomado:", err);
-      return res.status(500).json({ error: 'Error en la base de datos' });
-    }
-
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ error: 'Curso no encontrado o ya eliminado' });
-    }
-
-    res.json({ success: true, message: 'Curso eliminado correctamente' });
-  });
-});
-
-
-app.post('/agregarCurso', async (req, res) => {
-  try {
-    const { title, description, tutor, category } = req.body;
-
-    if (!title || !tutor) {
-      return res.status(400).json({ error: 'Datos incompletos' });
-    }
-
-    console.log("Datos recibidos:", req.body);
-
-    const query = `INSERT INTO cursos_presenciales (title, description, tutor, status, category) VALUES (?, ?, ?, 'true', ?)`;
-
-    const [result] = await db.promise().query(query, [title, description, tutor, category]);
-
-    res.json({ success: true, message: 'Curso agregado correctamente', result });
-
-  } catch (error) {
-    console.error("Error al insertar el curso:", error);
-    res.status(500).json({ error: 'Error en la base de datos' });
-  }
-});
-
-
-app.post('/agregarCursoTomado', (req, res) => {
-  const { id_usuario, id_course, start_date, end_date, progress } = req.body;
-
-  // Validación de entrada
-  if (!id_usuario || !id_course || !start_date) {
-    return res.status(400).json({ error: 'Datos incompletos o inválidos' });
-  }
-
-  console.log("Datos recibidos:", req.body);
-
-  const finalProgress = progress !== undefined ? progress : null;
-
-  // Consulta SQL
-  const query = `INSERT INTO usuario_curso (id_usuario, id_course, progress, start_date, end_date) VALUES (?, ?, ?, ?, ?)`;
-  const values = [id_usuario, id_course, finalProgress, start_date, end_date || null];
-
-  // Ejecutar la consulta
-  db.query(query, values, (err, result) => {
-    if (err) {
-      console.error("Error al insertar el curso:", err);
-      return res.status(500).json({ error: 'Error en la base de datos' });
-    }
-    console.log("Curso agregado con éxito:", result);
-    res.json({ success: true, message: 'Curso agregado con éxito', result });
-  });
-});
-
-app.post('/api/asignarCurso', async (req, res) => {
-  try {
-    const { courseId, employees } = req.body;
-
-    if (!courseId || !Array.isArray(employees) || employees.length === 0) {
-      return res.status(400).json({ error: 'Datos incompletos o inválidos' });
-    }
-
-    const startDate = new Date().toISOString().split('T')[0];
-    const endDate = new Date();
-    endDate.setMonth(endDate.getMonth() + 1);
-    const formattedEndDate = endDate.toISOString().split('T')[0];
-
-    const query = `
-      INSERT INTO usuario_curso (id_usuario, id_course, progress, start_date, end_date) 
-      VALUES ? 
-      ON DUPLICATE KEY UPDATE 
-        progress = VALUES(progress), 
-        end_date = VALUES(end_date)
-    `;
-
-    const values = employees.map(emp => [emp, courseId, 0, startDate, formattedEndDate]);
-
-    const [results] = await db.promise().query(query, [values]);
-
-    console.log("Curso asignado con éxito:", results);
-    res.json({ message: 'Curso asignado correctamente', results });
-
-  } catch (err) {
-    console.error("Error asignando curso:", err);
-    res.status(500).json({ error: 'Error asignando curso' });
-  }
-});
-
-app.post('/updateCargaMasiva', async (req, res) => {
-  const datosExcel = req.body; // Recibimos el objeto JSON con los datos
-  console.log("Datos recibidos:", datosExcel);
-
-  // Verificar que los datos existan y sean válidos
-  if (!Array.isArray(datosExcel) || datosExcel.length === 0) {
-    return res.status(400).json({ success: false, message: 'Datos inválidos o vacíos' });
-  }
-
-  // Extraer datos del primer curso para insertar en `cursos_presenciales`
-  const { id_usuario, curso, tutor, start_date, end_date, progress } = datosExcel[0];
-
-  const queryInsertCourse = `
-    INSERT INTO cursos_presenciales (title, description, tutor, status)
-    VALUES (?, '', ?, 'true')
-  `;
-
-  const querySelectCourse = `
-    SELECT id_course FROM cursos_presenciales WHERE title = ? AND tutor = ? AND status = 'true'
-  `;
-
-  const queryInsertUserCourse = `
-    INSERT INTO usuario_curso (id_usuario, id_course, progress, start_date, end_date) 
-    VALUES ? 
-    ON DUPLICATE KEY UPDATE 
-      progress = VALUES(progress), 
-      end_date = VALUES(end_date)
-  `;
-
-  try {
-    // Paso 1: Verificar si el curso ya existe
-    const [existingCourse] = await db.promise().query(querySelectCourse, [curso, tutor]);
-    let id_course;
-
-    if (existingCourse.length > 0) {
-      id_course = existingCourse[0].id_course;
-      console.log("El curso ya existe. Usando ID existente:", id_course);
-    } else {
-      // Insertar el curso y obtener su ID
-      const [insertResult] = await db.promise().query(queryInsertCourse, [curso, tutor]);
-      console.log("Curso agregado con éxito:", insertResult);
-
-      const [courseResult] = await db.promise().query(querySelectCourse, [curso, tutor]);
-      if (courseResult.length === 0) {
-        return res.status(404).json({ success: false, message: 'No se encontró el curso recién creado' });
-      }
-      id_course = courseResult[0].id_course;
-      console.log("Nuevo curso creado con ID:", id_course);
-    }
-
-    // Paso 2: Insertar usuarios en `usuario_curso`
-    const values2 = datosExcel.map(curso => [curso.id_usuario, id_course, curso.progress, curso.start_date, curso.end_date]);
-    await db.promise().query(queryInsertUserCourse, [values2]);
-
-    console.log("Usuarios asignados al curso con éxito");
-
-    // Respuesta exitosa
-    res.status(200).json({ success: true, message: "Proceso completado con éxito" });
-  } catch (error) {
-    console.error("Error en el proceso:", error);
-    res.status(500).json({ success: false, message: error.message || 'Error en el servidor' });
-  }
-});
-
-
 app.post('/login', async (req, res) => {
   const { email, num_empleado, password } = req.body;
 
@@ -785,8 +588,107 @@ app.post('/login', async (req, res) => {
   }
 });
 
+app.post('/api/solicitar-recuperacion', async (req, res) => {
+  const { email, num_empleado } = req.body;
 
+  if (!email && !num_empleado) {
+    return res.status(400).json({ message: 'Proporcione correo o número de empleado' });
+  }
 
+  try {
+    const [usuario] = await new Promise((resolve, reject) => {
+      db.query(
+        `SELECT * FROM users WHERE ${email ? 'email = ?' : 'num_empleado = ?'}`,
+        [email || num_empleado],
+        (err, results) => {
+          if (err) return reject(err);
+          resolve(results);
+        }
+      );
+    });
+
+    if (!usuario) {
+      return res.status(404).json({ message: 'Usuario no encontrado' });
+    }
+
+    const token = crypto.randomBytes(32).toString("hex");
+    const expiracion = new Date();
+    expiracion.setHours(expiracion.getHours() + 2); // válido 2 horas
+
+    await new Promise((resolve, reject) => {
+      db.query(
+        `UPDATE users SET token_recuperacion = ?, recuperacion_expira = ? WHERE id = ?`,
+        [token, expiracion, usuario.id],
+        (err) => (err ? reject(err) : resolve())
+      );
+    });
+
+    const enlace = `${process.env.BASE_URL}/restablecer?token=${token}`;
+    const html = `
+      <div style="font-family: sans-serif; padding: 24px;">
+        <h2>Recuperación de contraseña</h2>
+        <p>Hola <strong>${usuario.name}</strong>,</p>
+        <p>Haz clic en el siguiente botón para restablecer tu contraseña:</p>
+        <a href="${enlace}" style="display:inline-block; background:#9A3324; color:white; padding:10px 20px; border-radius:6px; text-decoration:none;">Restablecer contraseña</a>
+        <p>Este enlace es válido por 2 horas.</p>
+      </div>
+    `;
+
+    await enviarCorreo(usuario.email, 'Restablece tu contraseña', html);
+    res.json({ success: true, message: 'Se envió un enlace de recuperación al correo registrado' });
+
+  } catch (error) {
+    console.error("❌ Error al solicitar recuperación:", error);
+    res.status(500).json({ message: 'Error al procesar la solicitud' });
+  }
+});
+
+app.post('/api/restablecer-password', async (req, res) => {
+  const { token, nuevaPassword } = req.body;
+
+  if (!token || !nuevaPassword) {
+    return res.status(400).json({ message: 'Token y nueva contraseña requeridos' });
+  }
+
+  try {
+    const [usuario] = await new Promise((resolve, reject) => {
+      db.query(
+        `SELECT * FROM users WHERE token_recuperacion = ?`,
+        [token],
+        (err, results) => {
+          if (err) return reject(err);
+          resolve(results);
+        }
+      );
+    });
+
+    if (!usuario) {
+      return res.status(404).json({ message: 'Token inválido o caducado' });
+    }
+
+    const ahora = new Date();
+    const expira = new Date(usuario.recuperacion_expira);
+
+    if (ahora > expira) {
+      return res.status(410).json({ message: 'El enlace de recuperación ha expirado' });
+    }
+
+    const hashed = bcrypt.hashSync(nuevaPassword, 10);
+    await new Promise((resolve, reject) => {
+      db.query(
+        `UPDATE users SET password = ?, token_recuperacion = NULL, recuperacion_expira = NULL WHERE id = ?`,
+        [hashed, usuario.id],
+        (err) => (err ? reject(err) : resolve())
+      );
+    });
+
+    res.json({ success: true, message: 'Contraseña actualizada correctamente' });
+
+  } catch (error) {
+    console.error("❌ Error al restablecer contraseña:", error);
+    res.status(500).json({ message: 'Error al actualizar contraseña' });
+  }
+});
 
 //Blog part
 app.get('/posts', (req, res) => {
@@ -815,6 +717,202 @@ app.get('/posts', (req, res) => {
     res.json(posts);
     console.log(posts);
   });
+});
+
+//cursos
+
+app.post('/actualizarCurso', (req, res) => {
+  const { id_course, title, description, tutor, progress, category } = req.body;
+
+  console.log(req.body)
+  const query = `UPDATE cursos_presenciales SET title= '${title}', description = '${description}',tutor= '${tutor}', category ='${category}' WHERE id_course= ${id_course}`;
+
+  try {
+    db.query(query, (err, result) => {
+      if (err) {
+        console.error("Error al actualizar el usuario:", err);
+        res.status(500).send('Error en la base de datos');
+      } else {
+        res.json(result);
+      }
+    });
+  } catch (e) {
+    console.error("Error en el servidor:", e);
+    res.status(500).send('Error en el servidor');
+  }
+});
+
+app.delete('/eliminarCursoTomado', (req, res) => {
+  const { id_usuario, id_course, start_date } = req.body;
+
+  // Validar entrada
+  if (!id_usuario || !id_course) {
+    return res.status(400).json({ error: 'Datos incompletos' });
+  }
+
+  console.log("Eliminando curso:", req.body);
+
+  const query = `DELETE FROM usuario_curso WHERE id_usuario = ? AND id_course = ? AND start_date = ?`;
+
+  db.query(query, [id_usuario, id_course, start_date], (err, result) => {
+    if (err) {
+      console.error("Error al eliminar el curso tomado:", err);
+      return res.status(500).json({ error: 'Error en la base de datos' });
+    }
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'Curso no encontrado o ya eliminado' });
+    }
+
+    res.json({ success: true, message: 'Curso eliminado correctamente' });
+  });
+});
+
+app.post('/agregarCurso', async (req, res) => {
+  try {
+    const { title, description, tutor, category } = req.body;
+
+    if (!title || !tutor) {
+      return res.status(400).json({ error: 'Datos incompletos' });
+    }
+
+    console.log("Datos recibidos:", req.body);
+
+    const query = `INSERT INTO cursos_presenciales (title, description, tutor, status, category) VALUES (?, ?, ?, 'true', ?)`;
+
+    const [result] = await db.promise().query(query, [title, description, tutor, category]);
+
+    res.json({ success: true, message: 'Curso agregado correctamente', result });
+
+  } catch (error) {
+    console.error("Error al insertar el curso:", error);
+    res.status(500).json({ error: 'Error en la base de datos' });
+  }
+});
+
+app.post('/agregarCursoTomado', (req, res) => {
+  const { id_usuario, id_course, start_date, end_date, progress } = req.body;
+
+  // Validación de entrada
+  if (!id_usuario || !id_course || !start_date) {
+    return res.status(400).json({ error: 'Datos incompletos o inválidos' });
+  }
+
+  console.log("Datos recibidos:", req.body);
+
+  const finalProgress = progress !== undefined ? progress : null;
+
+  // Consulta SQL
+  const query = `INSERT INTO usuario_curso (id_usuario, id_course, progress, start_date, end_date) VALUES (?, ?, ?, ?, ?)`;
+  const values = [id_usuario, id_course, finalProgress, start_date, end_date || null];
+
+  // Ejecutar la consulta
+  db.query(query, values, (err, result) => {
+    if (err) {
+      console.error("Error al insertar el curso:", err);
+      return res.status(500).json({ error: 'Error en la base de datos' });
+    }
+    console.log("Curso agregado con éxito:", result);
+    res.json({ success: true, message: 'Curso agregado con éxito', result });
+  });
+});
+
+app.post('/api/asignarCurso', async (req, res) => {
+  try {
+    const { courseId, employees } = req.body;
+
+    if (!courseId || !Array.isArray(employees) || employees.length === 0) {
+      return res.status(400).json({ error: 'Datos incompletos o inválidos' });
+    }
+
+    const startDate = new Date().toISOString().split('T')[0];
+    const endDate = new Date();
+    endDate.setMonth(endDate.getMonth() + 1);
+    const formattedEndDate = endDate.toISOString().split('T')[0];
+
+    const query = `
+      INSERT INTO usuario_curso (id_usuario, id_course, progress, start_date, end_date) 
+      VALUES ? 
+      ON DUPLICATE KEY UPDATE 
+        progress = VALUES(progress), 
+        end_date = VALUES(end_date)
+    `;
+
+    const values = employees.map(emp => [emp, courseId, 0, startDate, formattedEndDate]);
+
+    const [results] = await db.promise().query(query, [values]);
+
+    console.log("Curso asignado con éxito:", results);
+    res.json({ message: 'Curso asignado correctamente', results });
+
+  } catch (err) {
+    console.error("Error asignando curso:", err);
+    res.status(500).json({ error: 'Error asignando curso' });
+  }
+});
+
+app.post('/updateCargaMasiva', async (req, res) => {
+  const datosExcel = req.body; // Recibimos el objeto JSON con los datos
+  console.log("Datos recibidos:", datosExcel);
+
+  // Verificar que los datos existan y sean válidos
+  if (!Array.isArray(datosExcel) || datosExcel.length === 0) {
+    return res.status(400).json({ success: false, message: 'Datos inválidos o vacíos' });
+  }
+
+  // Extraer datos del primer curso para insertar en `cursos_presenciales`
+  const { id_usuario, curso, tutor, start_date, end_date, progress } = datosExcel[0];
+
+  const queryInsertCourse = `
+    INSERT INTO cursos_presenciales (title, description, tutor, status)
+    VALUES (?, '', ?, 'true')
+  `;
+
+  const querySelectCourse = `
+    SELECT id_course FROM cursos_presenciales WHERE title = ? AND tutor = ? AND status = 'true'
+  `;
+
+  const queryInsertUserCourse = `
+    INSERT INTO usuario_curso (id_usuario, id_course, progress, start_date, end_date) 
+    VALUES ? 
+    ON DUPLICATE KEY UPDATE 
+      progress = VALUES(progress), 
+      end_date = VALUES(end_date)
+  `;
+
+  try {
+    // Paso 1: Verificar si el curso ya existe
+    const [existingCourse] = await db.promise().query(querySelectCourse, [curso, tutor]);
+    let id_course;
+
+    if (existingCourse.length > 0) {
+      id_course = existingCourse[0].id_course;
+      console.log("El curso ya existe. Usando ID existente:", id_course);
+    } else {
+      // Insertar el curso y obtener su ID
+      const [insertResult] = await db.promise().query(queryInsertCourse, [curso, tutor]);
+      console.log("Curso agregado con éxito:", insertResult);
+
+      const [courseResult] = await db.promise().query(querySelectCourse, [curso, tutor]);
+      if (courseResult.length === 0) {
+        return res.status(404).json({ success: false, message: 'No se encontró el curso recién creado' });
+      }
+      id_course = courseResult[0].id_course;
+      console.log("Nuevo curso creado con ID:", id_course);
+    }
+
+    // Paso 2: Insertar usuarios en `usuario_curso`
+    const values2 = datosExcel.map(curso => [curso.id_usuario, id_course, curso.progress, curso.start_date, curso.end_date]);
+    await db.promise().query(queryInsertUserCourse, [values2]);
+
+    console.log("Usuarios asignados al curso con éxito");
+
+    // Respuesta exitosa
+    res.status(200).json({ success: true, message: "Proceso completado con éxito" });
+  } catch (error) {
+    console.error("Error en el proceso:", error);
+    res.status(500).json({ success: false, message: error.message || 'Error en el servidor' });
+  }
 });
 
 app.post('/AgregarPost', (req, res) => {
