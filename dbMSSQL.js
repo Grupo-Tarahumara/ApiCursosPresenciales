@@ -193,6 +193,24 @@ export const getUsuariosPorDepartamento = async (departamento) => {
   }
 };
 
+//verificar si el usario existe y sigue activo
+export const verificarUsuarioActivo = async (numEmpleado) => {
+  try {
+    const pool = await sql.connect(config);
+    const result = await pool.request()
+      .input('numEmpleado', sql.VarChar, String(numEmpleado).trim())
+      .query(`
+        SELECT COUNT(*) AS Existe
+        FROM personal 
+        WHERE Personal = @numEmpleado AND Estatus = 'ALTA'
+      `);
+    return result.recordset[0].Existe > 0;
+  } catch (error) {
+    console.error("❌ Error verificarUsuarioActivo:", error.message);
+    return false;
+  }
+}
+
 // Lista de departamentos únicos
 export const getDepartamentos = async () => {
   try {

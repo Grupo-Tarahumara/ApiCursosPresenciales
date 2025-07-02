@@ -15,7 +15,8 @@ import {
   getDepartamentos,
   getJerarquiaPersonal,
   getSubordinadosPorAprobador,
-  getAsistenciaPorCodigo
+  getAsistenciaPorCodigo,
+  verificarUsuarioActivo
 } from './dbMSSQL.js';
 import { generarCorreoAprobador, renderDatosHtml } from './renders.js';
 import { updateVacaciones } from './dbMSSQL.js';
@@ -655,37 +656,137 @@ app.post('/login', async (req, res) => {
   if ((!email && !num_empleado) || !password) {
     return res.status(400).json({
       success: false,
-      message: 'Correo o número de empleado y contraseña son requeridos'
+      code: 'FIELDS_REQUIRED',
+      message: 'Correo o número de empleado y contraseña son requeridos',
     });
   }
 
-  const query = email
-    ? `SELECT * FROM users WHERE email = ? AND status = 'Activo'`
-    : `SELECT * FROM users WHERE num_empleado = ? AND status = 'Activo'`;
+  try {
+    let empleadoID = num_empleado;
 
-  const identifier = email || num_empleado;
+    // --- CASO: Login por correo ---
+    if (email) {
+      const [userByEmail] = await new Promise((resolve, reject) => {
+        db.query(
+          `SELECT * FROM users WHERE email = ?`,
+          [email],
+          (err, results) => {
+            if (err) return reject(err);
+            resolve(results);
+          }
+        );
+      });
 
-  db.query(query, [identifier], async (err, result) => {
-    if (err) {
-      console.error("[LOG] Error al buscar el usuario:", err);
-      return res.status(500).json({ success: false, message: 'Error en la base de datos' });
+      if (!userByEmail) {
+        return res.status(404).json({
+          success: false,
+          code: 'NOT_FOUND',
+          message: 'Usuario con este correo no existe',
+        });
+      }
+
+      if (userByEmail.confirmado === 0) {
+        return res.status(401).json({
+          success: false,
+          code: 'ACCOUNT_NOT_CONFIRMED',
+          message: 'Tu cuenta no ha sido confirmada. Revisa tu correo electrónico.',
+        });
+      }
+
+      empleadoID = userByEmail.num_empleado;
+
+      const validPassword = await bcrypt.compare(password, userByEmail.password);
+      if (!validPassword) {
+        return res.status(401).json({
+          success: false,
+          code: 'INVALID_PASSWORD',
+          message: 'Contraseña incorrecta',
+        });
+      }
+
+      const activo = await verificarUsuarioActivo(empleadoID);
+      if (!activo) {
+        return res.status(403).json({
+          success: false,
+          code: 'INACTIVE_EXTERNAL',
+          message: 'El usuario está dado de baja en el sistema',
+        });
+      }
+
+      delete userByEmail.password;
+      return res.json({
+        success: true,
+        message: 'Inicio de sesión exitoso',
+        data: userByEmail,
+      });
+
+    } else {
+      // --- CASO: Login por número de empleado ---
+      const [userByNum] = await new Promise((resolve, reject) => {
+        db.query(
+          `SELECT * FROM users WHERE num_empleado = ?`,
+          [num_empleado],
+          (err, results) => {
+            if (err) return reject(err);
+            resolve(results);
+          }
+        );
+      });
+
+      if (!userByNum) {
+        return res.status(404).json({
+          success: false,
+          code: 'NOT_FOUND',
+          message: 'Número de empleado no registrado',
+        });
+      }
+
+      if (userByNum.confirmado === 0) {
+        return res.status(401).json({
+          success: false,
+          code: 'ACCOUNT_NOT_CONFIRMED',
+          message: 'Tu cuenta no ha sido confirmada. Revisa tu correo electrónico.',
+        });
+      }
+
+      const validPassword = await bcrypt.compare(password, userByNum.password);
+      if (!validPassword) {
+        return res.status(401).json({
+          success: false,
+          code: 'INVALID_PASSWORD',
+          message: 'Contraseña incorrecta',
+        });
+      }
+
+      const activo = await verificarUsuarioActivo(num_empleado);
+      if (!activo) {
+        return res.status(403).json({
+          success: false,
+          code: 'INACTIVE_EXTERNAL',
+          message: 'El usuario está dado de baja en el sistema',
+        });
+      }
+
+      delete userByNum.password;
+      return res.json({
+        success: true,
+        message: 'Inicio de sesión exitoso',
+        data: userByNum,
+      });
     }
 
-    if (result.length === 0) {
-      return res.status(401).json({ success: false, message: 'Usuario no encontrado' });
-    }
-
-    const user = result[0];
-
-    const validPassword = await bcrypt.compare(password, user.password);
-
-    if (!validPassword) {
-      return res.status(401).json({ success: false, message: 'Contraseña incorrecta' });
-    }
-
-    return res.json({ success: true, message: 'Inicio de sesión exitoso', data: user });
-  });
+  } catch (error) {
+    console.error("❌ Error en el proceso de login:", error);
+    return res.status(500).json({
+      success: false,
+      code: 'SERVER_ERROR',
+      message: 'Error inesperado en el servidor',
+    });
+  }
 });
+
+
+
 
 //Blog part
 app.get('/posts', (req, res) => {
