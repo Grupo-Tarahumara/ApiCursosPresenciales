@@ -635,13 +635,20 @@ app.post('/api/solicitar-recuperacion', async (req, res) => {
     `;
 
     await enviarCorreo(usuario.email, 'Restablece tu contraseña', html);
-    res.json({ success: true, message: 'Se envió un enlace de recuperación al correo registrado' });
+
+    // 🔁 Retorna también el enlace
+    res.json({
+      success: true,
+      message: 'Se envió un enlace de recuperación al correo registrado',
+      enlace,
+    });
 
   } catch (error) {
     console.error("❌ Error al solicitar recuperación:", error);
     res.status(500).json({ message: 'Error al procesar la solicitud' });
   }
 });
+
 
 app.post('/api/restablecer-password', async (req, res) => {
   const { token, nuevaPassword } = req.body;
