@@ -71,7 +71,6 @@ const returnConnection = () => {
 
 var db = returnConnection()
 
-
 db.on('error', (err) => {
   console.error('Error con la base de datos:', err);
 
@@ -255,7 +254,6 @@ app.post('/updateProgress', (req, res) => {
   }
 });
 
-
 app.get('/', (req, res) => {
   console.log("hola"); // Logs "hola" to the server console
   res.send("hola"); // Sends "hola" to the browser
@@ -407,7 +405,6 @@ app.get('/usuarios', (req, res) => {
   });
 });
 
-
 app.put('/actualizarUsuario', (req, res) => {
   const { id, name, email, password, rol } = req.body;
 
@@ -432,7 +429,6 @@ app.put('/actualizarUsuario', (req, res) => {
     }
   });
 });
-
 
 app.post('/eliminarUsuario', (req, res) => {
   const { id } = req.body;
@@ -648,7 +644,6 @@ app.post('/api/solicitar-recuperacion', async (req, res) => {
     res.status(500).json({ message: 'Error al procesar la solicitud' });
   }
 });
-
 
 app.post('/api/restablecer-password', async (req, res) => {
   const { token, nuevaPassword } = req.body;
@@ -1209,7 +1204,6 @@ app.delete('/comentarios/:id', (req, res) => {
 
 
 //Movimientos de Personal
-
 
 app.get("/api/aprobaciones", (req, res) => {
   const { aprobador } = req.query;
