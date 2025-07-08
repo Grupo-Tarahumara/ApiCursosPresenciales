@@ -1560,7 +1560,6 @@ app.get('/api/movimientos/mios/:num_empleado', async (req, res) => {
 app.get('/api/movimientos/requisiciones/:num_empleado', (req, res) => {
   const { num_empleado } = req.params;
 
-  // Primero obtenemos el rol del usuario solicitante
   const getRoleQuery = 'SELECT rol FROM users WHERE num_empleado = ?';
 
   db.query(getRoleQuery, [num_empleado], (err, roleResults) => {
@@ -1575,7 +1574,6 @@ app.get('/api/movimientos/requisiciones/:num_empleado', (req, res) => {
 
     const rol = roleResults[0].rol;
 
-    // Armamos el query principal con JOIN a users para obtener el nombre
     let movimientosQuery = `
       SELECT 
         mp.*, 
@@ -1591,7 +1589,6 @@ app.get('/api/movimientos/requisiciones/:num_empleado', (req, res) => {
 
     const params = [];
 
-    // Si no es admin ni reclutamiento, limitamos por num_empleado
     if (rol !== 'Reclutamiento' && rol !== 'admin') {
       movimientosQuery += ' AND mp.num_empleado = ?';
       params.push(num_empleado);
@@ -1599,18 +1596,56 @@ app.get('/api/movimientos/requisiciones/:num_empleado', (req, res) => {
 
     movimientosQuery += ' ORDER BY mp.fecha_solicitud DESC';
 
-    db.query(movimientosQuery, params, (err, rows) => {
+    db.query(movimientosQuery, params, (err, movimientos) => {
       if (err) {
         console.error('Error al obtener movimientos:', err);
         return res.status(500).json({ error: 'Error al obtener movimientos' });
       }
 
-      res.json({ data: rows });
+      // Si no hay movimientos, regresamos vacío
+      if (movimientos.length === 0) {
+        return res.json({ data: [] });
+      }
+
+      // Consultamos historial de aprobadores por cada movimiento
+      const movimientosConAprobaciones = movimientos.map(mov => {
+        return new Promise((resolve, reject) => {
+          const aprobacionesQuery = `
+            SELECT 
+              am.*, 
+              u.name AS nombre_aprobador,
+              u.num_empleado AS num_empleado_aprobador
+            FROM aprobaciones_movimientos am
+            JOIN users u ON u.num_empleado = am.id_aprobador
+            WHERE am.idMovimiento = ?
+            ORDER BY am.orden ASC
+          `;
+
+          db.query(aprobacionesQuery, [mov.idMovimiento], (err, aprobaciones) => {
+            if (err) {
+              console.error('Error al obtener aprobaciones:', err);
+              return reject(err);
+            }
+
+            resolve({
+              ...mov,
+              historial_aprobaciones: aprobaciones
+            });
+          });
+        });
+      });
+
+      Promise.all(movimientosConAprobaciones)
+        .then(resultados => {
+          res.json({ data: resultados });
+        })
+        .catch(err => {
+          console.error('Error al unir aprobaciones:', err);
+          res.status(500).json({ error: 'Error al obtener historial de aprobaciones' });
+        });
     });
   });
 });
-
-
 
 app.get('/api/movimientos', (req, res) => {
   const query = `
@@ -1643,6 +1678,36 @@ app.get('/api/movimientos', (req, res) => {
     }
 
     res.json({ data: rows });
+  });
+});
+
+app.get('/api/movimientos/aprobados-rechazados/:id_aprobador', (req, res) => {
+  const { id_aprobador } = req.params;
+
+  const query = `
+    SELECT 
+      mp.*, 
+      am.estatus AS estatus_aprobacion,
+      am.nota AS nota_aprobacion,
+      am.fecha_aprobacion,
+      u.name AS nombre_empleado,
+      ua.name AS nombre_aprobador
+    FROM aprobaciones_movimientos am
+    JOIN movimientos_personal mp ON mp.idMovimiento = am.idMovimiento
+    JOIN users u ON u.num_empleado = mp.num_empleado
+    JOIN users ua ON ua.num_empleado = am.id_aprobador
+    WHERE am.id_aprobador = ?
+      AND am.estatus IN ('aprobado', 'rechazado')
+    ORDER BY am.fecha_aprobacion DESC
+  `;
+
+  db.query(query, [id_aprobador], (err, results) => {
+    if (err) {
+      console.error('Error al obtener movimientos aprobados o rechazados:', err);
+      return res.status(500).json({ error: 'Error interno del servidor' });
+    }
+
+    res.json({ data: results });
   });
 });
 
