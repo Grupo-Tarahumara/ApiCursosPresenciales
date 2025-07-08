@@ -202,11 +202,41 @@ export function renderDatosHtml(tipo, datos) {
     </div>
   `;
 
-
     case "Cambio de puesto":
       return `
         
         `;
+    case "Aumento Plantilla":
+  return `
+    <div class="p-6 bg-white rounded-xl shadow space-y-4">
+      <h2 class="text-xl font-bold text-gray-800">Solicitud de Aumento de Plantilla</h2>
+      <p><strong>Puesto solicitado:</strong> ${datos.puesto}</p>
+      <p><strong>Motivo:</strong> ${datos.motivo}</p>
+      <p><strong>Justificación:</strong> ${datos.justificacion}</p>
+      <p><strong>Fecha de solicitud:</strong> ${new Date(datos.fecha_solicitud).toLocaleDateString('es-MX')}</p>
+
+      <hr class="my-4" />
+      <h3 class="text-lg font-medium text-gray-700">Perfil Requerido</h3>
+      <ul class="list-disc list-inside space-y-1">
+        <li><strong>Edad:</strong> ${datos.datos_generales.edad}</li>
+        <li><strong>Género:</strong> ${datos.datos_generales.genero}</li>
+        <li><strong>Escolaridad:</strong> ${datos.datos_generales.escolaridad}</li>
+        <li><strong>Idiomas:</strong> ${datos.datos_generales.idiomas}</li>
+        <li><strong>Experiencia:</strong> ${datos.datos_generales.experiencia} año(s)</li>
+        <li><strong>Conocimientos:</strong> ${datos.datos_generales.conocimientos}</li>
+        <li><strong>Competencias:</strong> ${datos.datos_generales.competencias}</li>
+        <li><strong>Habilidades:</strong> ${datos.datos_generales.habilidades}</li>
+        <li><strong>Turno:</strong> ${datos.datos_generales.turno}</li>
+        <li><strong>Horario:</strong> ${datos.datos_generales.horario}</li>
+        <li><strong>Día de descanso:</strong> ${datos.datos_generales.descanso}</li>
+        <li><strong>Evaluación inicial:</strong> ${datos.datos_generales.evaluacion}</li>
+        <li><strong>Observaciones:</strong> ${datos.datos_generales.observaciones}</li>
+        <li><strong>Equipo requerido:</strong> ${Array.isArray(datos.datos_generales.equipo)
+          ? datos.datos_generales.equipo.join(", ")
+          : "No especificado"}</li>
+      </ul>
+    </div>
+  `;
 
     default:
       return `<p style="color:gray">Sin detalles específicos para este tipo de movimiento.</p>`;

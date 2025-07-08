@@ -171,7 +171,7 @@ export async function procesarAprobacion(idAprobacion, estatus, nota) {
 `, [movimientoId]);
 
     const tipoMovimiento = mov.tipo_movimiento || "";
-    const excepcion64 = ["nueva posición", "aumento plantilla"].includes(tipoMovimiento);
+    const excepcion64 = ["Nueva Posición", "Aumento Plantilla"].includes(tipoMovimiento);
 
     const [[siguiente]] = await db.query(`
   SELECT a.id_aprobador, u.email, a.token_aprobacion, u.name
