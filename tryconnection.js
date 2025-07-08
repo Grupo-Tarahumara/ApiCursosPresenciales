@@ -1566,26 +1566,57 @@ app.get('/api/movimientos/mios/:num_empleado', async (req, res) => {
 app.get('/api/movimientos/requisiciones/:num_empleado', (req, res) => {
   const { num_empleado } = req.params;
 
-  const query = `
-    SELECT * FROM movimientos_personal mp
-    WHERE mp.num_empleado = ?
-      AND (
+  // Primero obtenemos el rol del usuario solicitante
+  const getRoleQuery = 'SELECT rol FROM users WHERE num_empleado = ?';
+
+  db.query(getRoleQuery, [num_empleado], (err, roleResults) => {
+    if (err) {
+      console.error('Error al obtener el rol del usuario:', err);
+      return res.status(500).json({ error: 'Error al validar usuario' });
+    }
+
+    if (roleResults.length === 0) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    const rol = roleResults[0].rol;
+
+    // Armamos el query principal con JOIN a users para obtener el nombre
+    let movimientosQuery = `
+      SELECT 
+        mp.*, 
+        u.name AS nombre
+      FROM movimientos_personal mp
+      JOIN users u ON u.num_empleado = mp.num_empleado
+      WHERE (
         mp.tipo_movimiento = 'Sustitución'
         OR mp.tipo_movimiento = 'Nueva Posición'
         OR mp.tipo_movimiento = 'Aumento Plantilla'
       )
-    ORDER BY mp.fecha_solicitud DESC
-  `;
+    `;
 
-  db.query(query, [num_empleado], (err, rows) => {
-    if (err) {
-      console.error('Error al obtener movimientos:', err);
-      return res.status(500).json({ error: 'Error al obtener movimientos' });
+    const params = [];
+
+    // Si no es admin ni reclutamiento, limitamos por num_empleado
+    if (rol !== 'Reclutamiento' && rol !== 'admin') {
+      movimientosQuery += ' AND mp.num_empleado = ?';
+      params.push(num_empleado);
     }
 
-    res.json({ data: rows });
+    movimientosQuery += ' ORDER BY mp.fecha_solicitud DESC';
+
+    db.query(movimientosQuery, params, (err, rows) => {
+      if (err) {
+        console.error('Error al obtener movimientos:', err);
+        return res.status(500).json({ error: 'Error al obtener movimientos' });
+      }
+
+      res.json({ data: rows });
+    });
   });
 });
+
+
 
 app.get('/api/movimientos', (req, res) => {
   const query = `
