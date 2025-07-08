@@ -210,8 +210,6 @@ export function renderDatosHtml(tipo, datos) {
   return `
     <div class="p-6 bg-white rounded-xl shadow space-y-4">
       <h2 class="text-xl font-bold text-gray-800">Solicitud de Aumento de Plantilla</h2>
-      
-      <p><strong>Número de empleado:</strong> ${datos.num_empleado}</p>
       <p><strong>Puesto solicitado:</strong> ${datos.puesto}</p>
       <p><strong>Motivo:</strong> ${datos.motivo}</p>
       <p><strong>Justificación:</strong> ${datos.justificacion}</p>
