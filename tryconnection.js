@@ -717,7 +717,6 @@ app.get('/posts', (req, res) => {
     });
 
     res.json(posts);
-    console.log(posts);
   });
 });
 
