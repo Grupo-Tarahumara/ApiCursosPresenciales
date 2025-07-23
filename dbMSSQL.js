@@ -173,6 +173,25 @@ export const getAllUsuarios = async () => {
   }
 };
 
+export const getAllPersonal = async () => {
+  try {
+    const pool = await sql.connect(config);
+    const result = await pool.request().query(`
+      SELECT 
+        Personal, ApellidoPaterno, ApellidoMaterno, Nombre, Sexo, Estatus,
+        Puesto, Departamento, PeriodoTipo, TipoContrato, Jornada, TipoSueldo, FechaAntiguedad, Situacion, Registro AS CURP, EstadoCivil, Registro2 AS RFC, Registro3 AS NSS, Tipo, Direccion, DireccionNumero, DireccionNumeroInt, Colonia, Delegacion, Poblacion, Estado, Pais, CodigoPostal, Telefono, eMail, 
+        ZonaEconomica, FormaPago, CtaDinero, PersonalSucursal, PersonalCuenta, FechaNacimiento, LugarNacimiento, Nacionalidad, Beneficiario, Parentesco AS BeneficiarioParentesco, Porcentaje AS PorcentajeBeneficiario, Beneficiario2, Parentesco2,
+        Madre, Padre, ReportaA,
+        FORMAT(FechaAntiguedad, 'dd/MM/yyyy') AS FechaAlta
+      FROM personal
+    `);
+    return result.recordset;
+  } catch (error) {
+    console.error("❌ Error getAllUsuarios:", error.message);
+    return [];
+  }
+};
+
 // Usuarios por departamento
 export const getUsuariosPorDepartamento = async (departamento) => {
   try {
@@ -309,6 +328,90 @@ export const getSubordinadosPorAprobador = async (numEmpleado) => {
     return [];
   }
 };
+
+  export const getSubordinadosKardex = async (numEmpleado) => {
+    try {
+      const pool = await sql.connect(config);
+      const result = await pool.request()
+        .input('numEmpleado', sql.VarChar, String(numEmpleado).trim())
+        .query(`
+          WITH Jerarquia AS (
+              SELECT 
+                  p.Personal AS EmpleadoID,
+                  p.Personal,
+                  p.reportaA,
+                  p.ApellidoPaterno,
+                  p.ApellidoMaterno,
+                  p.Nombre,
+                  p.Estatus,
+                  p.Puesto,
+                  p.Departamento,
+                  CAST(p.reportaA AS VARCHAR(100)) AS AprobadorNivel1,
+                  CAST(NULL AS VARCHAR(100)) AS AprobadorNivel2,
+                  CAST(NULL AS VARCHAR(100)) AS AprobadorNivel3,
+                  CAST(NULL AS VARCHAR(100)) AS AprobadorNivel4,
+                  CAST(NULL AS VARCHAR(100)) AS AprobadorNivel5,
+                  1 AS Nivel
+              FROM personal p
+              WHERE p.Estatus = 'ALTA'
+
+              UNION ALL
+
+              SELECT 
+                  j.EmpleadoID,
+                  j.Personal,
+                  p.reportaA,
+                  j.ApellidoPaterno,
+                  j.ApellidoMaterno,
+                  j.Nombre,
+                  j.Estatus,
+                  j.Puesto,
+                  j.Departamento,
+                  j.AprobadorNivel1,
+                  CASE WHEN j.Nivel = 1 THEN CAST(p.reportaA AS VARCHAR(100)) ELSE j.AprobadorNivel2 END,
+                  CASE WHEN j.Nivel = 2 THEN CAST(p.reportaA AS VARCHAR(100)) ELSE j.AprobadorNivel3 END,
+                  CASE WHEN j.Nivel = 3 THEN CAST(p.reportaA AS VARCHAR(100)) ELSE j.AprobadorNivel4 END,
+                  CASE WHEN j.Nivel = 4 THEN CAST(p.reportaA AS VARCHAR(100)) ELSE j.AprobadorNivel5 END,
+                  j.Nivel + 1
+              FROM Jerarquia j
+              JOIN personal p ON j.reportaA = p.Personal
+              WHERE j.Nivel < 5
+          )
+
+          SELECT
+              EmpleadoID AS Personal,
+              ApellidoPaterno,
+              ApellidoMaterno,
+              Nombre,
+              Estatus,
+              Puesto,
+              Departamento,
+              MAX(AprobadorNivel1) AS AprobadorNivel1
+          FROM Jerarquia
+          WHERE 
+              CAST(@numEmpleado AS VARCHAR(100)) IN (
+                  AprobadorNivel1, 
+                  AprobadorNivel2, 
+                  AprobadorNivel3, 
+                  AprobadorNivel4, 
+                  AprobadorNivel5
+              )
+          GROUP BY
+              EmpleadoID,
+              ApellidoPaterno,
+              ApellidoMaterno,
+              Nombre,
+              Estatus,
+              Puesto,
+              Departamento
+        `);
+      return result.recordset;
+    } catch (error) {
+      console.error("❌ Error getSubordinadosKardex:", error.message || error);
+      return [];
+    }
+  };
+
 
 // Jerarquía de aprobadores (movpersonal)
 export const getJerarquiaPersonal = async () => {

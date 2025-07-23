@@ -13,8 +13,10 @@ import {
   getAllUsuarios,
   getUsuariosPorDepartamento,
   getDepartamentos,
+  getAllPersonal,
   getJerarquiaPersonal,
   getSubordinadosPorAprobador,
+  getSubordinadosKardex,
   getAsistenciaPorCodigo,
   verificarUsuarioActivo
 } from './dbMSSQL.js';
@@ -34,6 +36,7 @@ const port = process.env.SERVER_PORT || 3041;
 
 const allowedOrigins = [
   'http://localhost:3000', // para desarrollo
+  'http://localhost:5173',
   'https://site.grupotarahumara.com.mx',
   'https://site-dev.in.grupotarahumara.com.mx',
   'https://capacitacion.in.grupotarahumara.com.mx',
@@ -129,6 +132,11 @@ app.get('/api/users/all', async (req, res) => {
   res.json(data);
 });
 
+app.get('/api/personal', async (req, res) => {
+  const data = await getAllPersonal();
+  res.json(data);
+});
+
 app.get('/api/users/by-department', async (req, res) => {
   const { department } = req.query;
   if (!department) return res.status(400).json({ error: "Falta el parámetro 'department'" });
@@ -150,6 +158,21 @@ app.get('/api/subordinados', async (req, res) => {
   }
 
   const data = await getSubordinadosPorAprobador(num_empleado);
+
+  if (!data || data.length === 0) {
+    return res.status(404).json({ success: false, message: 'No se encontraron subordinados para este aprobador' });
+  }
+
+  res.json({ success: true, data });
+});
+
+app.get('/api/subordinados_kardex', async (req, res) => {
+  const { num_empleado } = req.query;
+  console.log("📌 API recibió num_empleado:", num_empleado);
+
+  const data = await getSubordinadosPorAprobador(num_empleado);
+
+  console.log("📌 Resultados obtenidos:", data);
 
   if (!data || data.length === 0) {
     return res.status(404).json({ success: false, message: 'No se encontraron subordinados para este aprobador' });

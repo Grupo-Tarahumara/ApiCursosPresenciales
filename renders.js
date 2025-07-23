@@ -5,6 +5,11 @@ export function renderDatosHtml(tipo, datos) {
               <p><strong>Día solicitado:</strong> ${datos.requestedRestDay}</p>`;
     case "Cambio de horario":
       return `<p><strong>Nuevo horario solicitado:</strong> ${datos.newSchedule}</p>`;
+    case "Comisión fuera de Oficina":
+      return `<p><strong>Dias de home office:</strong> ${datos.homeOfficeDays}</p>
+              <p><strong>Inicio:</strong> ${datos.startDate}</p>
+              <p><strong>Fin:</strong> ${datos.endDate}</p>
+              <p><strong>Reincorporación:</strong> ${datos.resumeDate}</p>`;
     case "Comisión Prolongada fuera de Oficina":
       return `<p><strong>Dias de home office:</strong> ${datos.homeOfficeDays}</p>
               <p><strong>Inicio:</strong> ${datos.startDate}</p>
@@ -243,12 +248,12 @@ export function renderDatosHtml(tipo, datos) {
   }
 }
 
-export function datosSolicitanteHtml(Nombre, num_empleado, Puesto, Departamento, FechaIngreso, Email) {
+export function datosSolicitanteHtml(Nombre, num_empleado, Puesto, Departamento, FechaIngreso, Email, ApellidoPaterno, ApellidoMaterno) {
   return `
     <div style="margin-top: 20px; font-size: 15px; color: #333;">
       <h3 style="margin-bottom: 10px; color: #444;">📌 Datos del Solicitante:</h3>
       <ul style="list-style: none; padding: 0;">
-        <li><strong>Nombre:</strong> ${Nombre}</li>
+        <li><strong>Nombre:</strong> ${Nombre} ${ApellidoPaterno} ${ApellidoMaterno}</li>
         <li><strong>Número de empleado:</strong> ${num_empleado}</li>
         <li><strong>Puesto:</strong> ${Puesto}</li>
         <li><strong>Departamento:</strong> ${Departamento}</li>

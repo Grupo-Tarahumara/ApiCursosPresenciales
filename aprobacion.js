@@ -254,7 +254,9 @@ export async function procesarAprobacion(idAprobacion, estatus, nota) {
         datos.Puesto,
         datos.Departamento,
         datos.FechaIngreso,
-        datos.Email
+        datos.Email,
+        datos.ApellidoPaterno,
+        datos.ApellidoMaterno
       );
 
       const enlace = `${process.env.API_BASE_URL}/api/aprobaciones/responder?token=${siguiente.token_aprobacion}`;
