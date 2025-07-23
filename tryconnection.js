@@ -1323,7 +1323,7 @@ app.post("/api/movimientos", (req, res) => {
         const idMovimiento = result.insertId;
         console.log("✅ Movimiento insertado con ID:", idMovimiento);
 
-      const empleado = empleadosDb.find(emp => emp.Personal === num_empleado.toString());
+        const empleado = empleadosDb.find(emp => emp.Personal === num_empleado.toString());
 
         if (!empleado) {
           console.error(`❌ Empleado ${num_empleado} no encontrado en empleadosDb`);
@@ -2003,110 +2003,410 @@ app.put("/api/movimientos/:idMovimiento", (req, res) => {
 
 //Plan de estudio
 
-app.get("/api/plan-estudios/:num_empleado", (req, res) => {
-  const { num_empleado } = req.params;
+app.post('/planesEstudio/crear', async (req, res) => {
+  const { nombre, descripcion } = req.body;
 
-  db.query("SELECT id FROM users WHERE num_empleado = ?", [num_empleado], (err, result) => {
-    if (err) return res.status(500).json({ error: "Error al buscar usuario" });
-    if (result.length === 0) return res.status(404).json({ error: "Usuario no encontrado" });
+  if (!nombre) return res.status(400).json({ error: 'Nombre requerido' });
 
-    const user_id = result[0].id;
+  const query = `INSERT INTO planes_estudio (nombre, descripcion) VALUES (?, ?)`;
 
-    const query = `
-      SELECT 
-        cp.id_course AS modulo_id,
-        cp.title AS nombre,
-        cp.category AS categoria,
-        cp.description AS descripcion,
-        IFNULL(pe.estatus, 0) AS estatus,
-        pe.fecha_completado
-      FROM cursos_presenciales cp
-      LEFT JOIN plan_estudios_usuario pe 
-        ON pe.modulo_id = cp.id_course AND pe.user_id = ?
-      ORDER BY cp.status, cp.id_course
-    `;
-
-    db.query(query, [user_id], (err2, modulos) => {
-      if (err2) return res.status(500).json({ error: "Error al obtener cursos" });
-      res.json(modulos);
-    });
-  });
+  try {
+    const [result] = await db.promise().query(query, [nombre, descripcion]);
+    res.json({ success: true, message: 'Plan creado correctamente', id_plan: result.insertId });
+  } catch (error) {
+    console.error("Error creando plan:", error);
+    res.status(500).json({ error: 'Error al crear plan' });
+  }
 });
 
-app.put('/api/plan-estudios', (req, res) => {
-  const { num_empleado, modulo_id, estatus } = req.body;
+app.post('/etapas/crear', async (req, res) => {
+  const { id_plan, nombre, descripcion, orden } = req.body;
 
-  db.query('SELECT id FROM users WHERE num_empleado = ?', [num_empleado], (err, results) => {
-    if (err) return res.status(500).json({ error: 'Error al buscar usuario' });
-    if (results.length === 0) return res.status(404).json({ error: 'Usuario no encontrado' });
+  if (!id_plan || orden === undefined) {
+    return res.status(400).json({ error: 'Datos incompletos' });
+  }
 
-    const user_id = results[0].id;
+  const query = `
+    INSERT INTO etapas_plan (id_plan, orden, nombre, descripcion) 
+    VALUES (?, ?, ?, ?)`;
 
-    const sql = `
-      INSERT INTO plan_estudios_usuario (user_id, modulo_id, estatus, fecha_completado)
-      VALUES (?, ?, ?, IF(? = 1, CURDATE(), NULL))
-      ON DUPLICATE KEY UPDATE 
-        estatus = VALUES(estatus),
-        fecha_completado = IF(VALUES(estatus) = 1, CURDATE(), NULL)
-    `;
-
-    db.query(sql, [user_id, modulo_id, estatus, estatus], (err2) => {
-      if (err2) return res.status(500).json({ error: 'Error al guardar curso' });
-
-      res.json({ message: 'Curso actualizado correctamente' });
-    });
-  });
+  try {
+    const [result] = await db.promise().query(query, [id_plan, orden, nombre, descripcion]);
+    res.json({ success: true, message: 'Etapa agregada', id_etapa: result.insertId });
+  } catch (err) {
+    console.error("Error creando etapa:", err);
+    res.status(500).json({ error: 'Error creando etapa' });
+  }
 });
 
+app.post('/etapas/asignarCursos', async (req, res) => {
+  const { id_etapa, cursos } = req.body;
 
-app.delete('/api/plan-estudios', (req, res) => {
-  const { num_empleado, modulo_id } = req.body;
+  if (!id_etapa || !Array.isArray(cursos) || cursos.length === 0) {
+    return res.status(400).json({ error: 'Datos inválidos' });
+  }
 
-  db.query('SELECT id FROM users WHERE num_empleado = ?', [num_empleado], (err, results) => {
-    if (err) return res.status(500).json({ error: 'Error al buscar usuario' });
-    if (results.length === 0) return res.status(404).json({ error: 'Usuario no encontrado' });
+  try {
+    // Obtener el id_plan al que pertenece la etapa
+    const [[etapa]] = await db.promise().query(`
+      SELECT id_plan FROM etapas_plan WHERE id_etapa = ?
+    `, [id_etapa]);
 
-    const user_id = results[0].id;
+    if (!etapa) return res.status(404).json({ error: 'Etapa no encontrada' });
 
-    db.query(
-      'DELETE FROM plan_estudios_usuario WHERE user_id = ? AND modulo_id = ?',
-      [user_id, modulo_id],
-      (err2) => {
-        if (err2) return res.status(500).json({ error: 'Error al eliminar curso' });
+    const id_plan = etapa.id_plan;
 
-        res.json({ message: 'Curso eliminado del plan de estudios del usuario' });
-      }
+    // Verificar si alguno de los cursos ya está asignado en otra etapa de este plan
+    const [conflictos] = await db.promise().query(`
+      SELECT ec.id_curso FROM etapas_cursos ec
+      JOIN etapas_plan ep ON ec.id_etapa = ep.id_etapa
+      WHERE ep.id_plan = ? AND ec.id_curso IN (?)
+    `, [id_plan, cursos]);
+
+    const cursosConflictivos = conflictos.map(row => row.id_curso);
+
+    if (cursosConflictivos.length > 0) {
+      return res.status(400).json({
+        error: 'Algunos cursos ya están asignados en otra etapa del plan',
+        cursosDuplicados: cursosConflictivos
+      });
+    }
+
+    // Insertar cursos
+    const values = cursos.map(cursoId => [id_etapa, cursoId]);
+    await db.promise().query(
+      `INSERT INTO etapas_cursos (id_etapa, id_curso) VALUES ?`,
+      [values]
     );
-  });
+
+    res.json({ success: true, message: 'Cursos asignados exitosamente' });
+  } catch (err) {
+    console.error("Error asignando cursos:", err);
+    res.status(500).json({ error: 'Error asignando cursos' });
+  }
 });
 
 
-app.get('/api/plan-estudios/:num_empleado/resumen', (req, res) => {
+app.get('/planesEstudio/:id_plan/etapas', async (req, res) => {
+  const { id_plan } = req.params;
+
+  try {
+    const [etapas] = await db.promise().query(`
+      SELECT id_etapa, nombre FROM etapas_plan WHERE id_plan = ? ORDER BY orden ASC`, [id_plan]);
+    res.json({ etapas });
+  } catch (err) {
+    console.error("Error obteniendo etapas:", err);
+    res.status(500).json({ error: 'Error cargando etapas' });
+  }
+});
+
+app.post('/etapas/asignarCursoUnitario', async (req, res) => {
+  const { id_etapa, id_curso, id_plan } = req.body;
+
+  if (!id_etapa || !id_curso || !id_plan) {
+    return res.status(400).json({ error: 'Datos incompletos' });
+  }
+
+  try {
+    // Verificar si el curso ya está en otra etapa de este plan
+    const [[existe]] = await db.promise().query(`
+      SELECT ec.id_etapa
+      FROM etapas_cursos ec
+      JOIN etapas_plan ep ON ec.id_etapa = ep.id_etapa
+      WHERE ep.id_plan = ? AND ec.id_curso = ?
+      LIMIT 1
+    `, [id_plan, id_curso]);
+
+    if (existe) {
+      return res.status(400).json({
+        error: 'Este curso ya está asignado a otra etapa de este plan'
+      });
+    }
+
+    await db.promise().query(
+      `INSERT INTO etapas_cursos (id_etapa, id_curso) VALUES (?, ?)`,
+      [id_etapa, id_curso]
+    );
+
+    res.json({ success: true, message: 'Curso asignado correctamente' });
+  } catch (err) {
+    console.error("Error asignando curso:", err);
+    res.status(500).json({ error: 'Error asignando curso a etapa' });
+  }
+});
+
+
+
+// Elimina un curso de una etapa específica
+app.delete('/asignacionCursos/eliminarEspecifico', async (req, res) => {
+  const { id_etapa, id_curso } = req.body;
+
+  if (!id_etapa || !id_curso) {
+    return res.status(400).json({ error: 'Datos incompletos' });
+  }
+
+  try {
+    const [result] = await db.promise().query(
+      `DELETE FROM etapas_cursos WHERE id_etapa = ? AND id_curso = ?`,
+      [id_etapa, id_curso]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: 'La asignación no existe' });
+    }
+
+    res.json({ success: true, message: 'Curso eliminado de la etapa' });
+  } catch (err) {
+    console.error("Error eliminando curso específico:", err);
+    res.status(500).json({ error: 'Error al eliminar curso de la etapa' });
+  }
+});
+
+
+
+app.post('/planesEstudio/asignar', async (req, res) => {
+  const { id_usuario, id_plan } = req.body;
+
+  if (!id_usuario || !id_plan) {
+    return res.status(400).json({ error: 'Datos requeridos' });
+  }
+
+  // Buscar la primera etapa del plan
+  const queryEtapa = `SELECT id_etapa FROM etapas_plan WHERE id_plan = ? ORDER BY orden ASC LIMIT 1`;
+
+  try {
+    const [rows] = await db.promise().query(queryEtapa, [id_plan]);
+    if (rows.length === 0) return res.status(404).json({ error: 'El plan no tiene etapas' });
+
+    const id_etapa_inicial = rows[0].id_etapa;
+
+    const queryInsert = `
+      INSERT INTO progreso_usuario_plan (id_usuario, id_plan, id_etapa_actual)
+      VALUES (?, ?, ?)`;
+
+    await db.promise().query(queryInsert, [id_usuario, id_plan, id_etapa_inicial]);
+
+    res.json({ success: true, message: 'Plan asignado al usuario' });
+  } catch (err) {
+    console.error("Error asignando plan:", err);
+    res.status(500).json({ error: 'Error asignando plan al usuario' });
+  }
+});
+
+app.get('/usuarios/:id_usuario/planActivos', async (req, res) => {
+  const { id_usuario } = req.params;
+
+  const query = `
+    SELECT ep.id_etapa, ep.nombre AS etapa, c.id_course, c.title, uc.progress
+FROM progreso_usuario_plan pup
+JOIN users u ON u.id = pup.id_usuario
+JOIN etapas_plan ep ON pup.id_etapa_actual = ep.id_etapa
+JOIN etapas_cursos ec ON ec.id_etapa = ep.id_etapa
+JOIN cursos_presenciales c ON c.id_course = ec.id_curso
+LEFT JOIN usuario_curso uc 
+  ON uc.id_usuario = u.num_empleado
+  AND uc.id_course = c.id_course
+WHERE pup.id_usuario = ?
+  `;
+
+  try {
+    const [rows] = await db.promise().query(query, [id_usuario]);
+    res.json({ success: true, cursos: rows });
+  } catch (err) {
+    console.error("Error consultando cursos:", err);
+    res.status(500).json({ error: 'Error consultando cursos del plan' });
+  }
+});
+
+app.patch('/usuarios/:id_usuario/avanzarEtapa', async (req, res) => {
+  const { id_usuario } = req.params;
+  console.log(`🔄 Iniciando avance de etapa para usuario ${id_usuario}`);
+
+  try {
+    // Obtener la etapa actual
+    const [[progreso]] = await db.promise().query(`
+      SELECT id_plan, id_etapa_actual FROM progreso_usuario_plan WHERE id_usuario = ?`, [id_usuario]);
+
+    console.log("📌 Progreso actual:", progreso);
+
+    if (!progreso) {
+      console.warn("⚠️ Usuario sin plan asignado");
+      return res.status(404).json({ error: 'Plan no asignado al usuario' });
+    }
+
+    const { id_plan, id_etapa_actual } = progreso;
+
+    // Verificar si tiene cursos pendientes en la etapa actual
+    const [[pendientes]] = await db.promise().query(`
+  SELECT COUNT(*) AS faltan
+  FROM etapas_cursos ec
+  LEFT JOIN users u ON u.id = ?
+  LEFT JOIN usuario_curso uc 
+    ON ec.id_curso = uc.id_course AND uc.id_usuario = u.num_empleado
+  WHERE ec.id_etapa = ? AND (uc.progress IS NULL OR uc.progress < 100)
+`, [id_usuario, id_etapa_actual]);
+
+    console.log("📊 Cursos pendientes:", pendientes.faltan);
+
+    if (pendientes.faltan > 0) {
+      console.log("⛔ No se puede avanzar, cursos incompletos");
+      return res.status(400).json({ error: 'Aún hay cursos pendientes en esta etapa' });
+    }
+
+    // Obtener la siguiente etapa en el plan
+    const [[siguiente]] = await db.promise().query(`
+      SELECT id_etapa FROM etapas_plan
+      WHERE id_plan = ? AND orden > (
+        SELECT orden FROM etapas_plan WHERE id_etapa = ?
+      )
+      ORDER BY orden ASC LIMIT 1
+    `, [id_plan, id_etapa_actual]);
+
+    console.log("➡️ Siguiente etapa:", siguiente);
+
+    if (siguiente) {
+      // Avanzar a la siguiente etapa
+      const [updateResult] = await db.promise().query(`
+        UPDATE progreso_usuario_plan SET id_etapa_actual = ? WHERE id_usuario = ?`,
+        [siguiente.id_etapa, id_usuario]);
+
+      console.log("✅ Cambio de etapa ejecutado:", updateResult);
+      res.json({ success: true, message: 'Avanzaste a la siguiente etapa' });
+
+    } else {
+      // Finalizar el plan si no hay más etapas
+      const [finalizar] = await db.promise().query(`
+        UPDATE progreso_usuario_plan SET completado = 1, fecha_completado = NOW() WHERE id_usuario = ?`,
+        [id_usuario]);
+
+      console.log("🏁 Plan marcado como completado:", finalizar);
+      res.json({ success: true, message: '¡Plan completado con éxito!' });
+    }
+  } catch (err) {
+    console.error("❌ Error al avanzar etapa:", err);
+    res.status(500).json({ error: 'Error al avanzar etapa', detalle: err.message });
+  }
+});
+
+app.get('/usuarios/:num_empleado/planCompleto', async (req, res) => {
   const { num_empleado } = req.params;
 
-  db.query('SELECT id FROM users WHERE num_empleado = ?', [num_empleado], (err, results) => {
-    if (err) return res.status(500).json({ error: 'Error al buscar usuario' });
-    if (results.length === 0) return res.status(404).json({ error: 'Usuario no encontrado' });
+  try {
+    // Obtener el ID del usuario (solo para encontrar su plan asignado)
+    const [userRows] = await db.promise().query(`
+      SELECT id FROM users WHERE num_empleado = ?`, [num_empleado]);
 
-    const user_id = results[0].id;
+    if (userRows.length === 0) {
+      return res.status(404).json({ error: 'Empleado no encontrado' });
+    }
 
-    const resumenSql = `
+    const id_usuario = userRows[0].id;
+
+    // Obtener el plan asignado
+    const [[plan]] = await db.promise().query(`
+      SELECT id_plan FROM progreso_usuario_plan WHERE id_usuario = ?`, [id_usuario]);
+
+    if (!plan) {
+      return res.status(404).json({ error: 'El usuario no tiene un plan asignado' });
+    }
+
+    const id_plan = plan.id_plan;
+
+    // Obtener TODAS las etapas del plan, con cursos y progreso (usando num_empleado)
+    const [rows] = await db.promise().query(`
       SELECT 
-        COUNT(*) AS total_modulos,
-        SUM(IF(pe.estatus = 1, 1, 0)) AS completados
-      FROM cursos_presenciales cp
-      LEFT JOIN plan_estudios_usuario pe 
-        ON pe.modulo_id = cp.id_course AND pe.user_id = ?
-    `;
+        ep.id_etapa,
+        ep.nombre AS etapa,
+        ep.orden,
+        c.id_course,
+        c.title,
+        c.description,
+        uc.progress
+      FROM etapas_plan ep
+      LEFT JOIN etapas_cursos ec ON ep.id_etapa = ec.id_etapa
+      LEFT JOIN cursos_presenciales c ON c.id_course = ec.id_curso
+      LEFT JOIN usuario_curso uc 
+        ON ec.id_curso = uc.id_course AND uc.id_usuario = ?
+      WHERE ep.id_plan = ?
+      ORDER BY ep.orden ASC, c.title ASC
+    `, [num_empleado, id_plan]);
 
-    db.query(resumenSql, [user_id], (err2, resumen) => {
-      if (err2) return res.status(500).json({ error: 'Error al obtener resumen' });
-
-      res.json(resumen[0]);
-    });
-  });
+    res.json({ success: true, cursos: rows });
+  } catch (err) {
+    console.error("❌ Error en /planCompleto:", err);
+    res.status(500).json({ error: 'Error interno del servidor' });
+  }
 });
 
+
+//matriz plan de estudio
+
+app.get('/asignacionCursos/matriz', async (req, res) => {
+  try {
+    const [planes] = await db.promise().query(`SELECT id_plan, nombre FROM planes_estudio`);
+    const [cursos] = await db.promise().query(`SELECT id_course, title FROM cursos_presenciales`);
+
+    // Obtener relaciones existentes
+    const [asignaciones] = await db.promise().query(`
+  SELECT ep.id_plan, ec.id_curso, ep.id_etapa
+  FROM etapas_plan ep
+  JOIN etapas_cursos ec ON ep.id_etapa = ec.id_etapa
+`);
+
+    res.json({ planes, cursos, asignaciones });
+  } catch (err) {
+    console.error("Error cargando matriz:", err);
+    res.status(500).json({ error: 'Error cargando matriz' });
+  }
+});
+
+app.post('/asignacionCursos/agregar', async (req, res) => {
+  const { id_plan, id_curso } = req.body;
+  if (!id_plan || !id_curso) return res.status(400).json({ error: 'Datos incompletos' });
+
+  try {
+    // Buscar o crear etapa "General"
+    const [[etapa]] = await db.promise().query(`
+      SELECT id_etapa FROM etapas_plan WHERE id_plan = ? AND nombre = 'General' LIMIT 1`, [id_plan]);
+
+    let id_etapa = etapa?.id_etapa;
+    if (!id_etapa) {
+      const [resInsert] = await db.promise().query(`
+        INSERT INTO etapas_plan (id_plan, orden, nombre, descripcion) VALUES (?, 1, 'General', 'Etapa única general')`, [id_plan]);
+      id_etapa = resInsert.insertId;
+    }
+
+    // Insertar curso en la etapa
+    await db.promise().query(`
+      INSERT IGNORE INTO etapas_cursos (id_etapa, id_curso) VALUES (?, ?)`, [id_etapa, id_curso]);
+
+    res.json({ success: true, message: 'Curso asignado al plan' });
+  } catch (err) {
+    console.error("Error asignando curso:", err);
+    res.status(500).json({ error: 'Error en la asignación' });
+  }
+});
+
+
+app.delete('/asignacionCursos/eliminar', async (req, res) => {
+  const { id_plan, id_curso } = req.body;
+  if (!id_plan || !id_curso) return res.status(400).json({ error: 'Datos incompletos' });
+
+  try {
+    const [[etapa]] = await db.promise().query(`
+      SELECT id_etapa FROM etapas_plan WHERE id_plan = ? AND nombre = 'General' LIMIT 1`, [id_plan]);
+
+    if (!etapa) return res.status(404).json({ error: 'Etapa general no encontrada' });
+
+    await db.promise().query(`
+      DELETE FROM etapas_cursos WHERE id_etapa = ? AND id_curso = ?`, [etapa.id_etapa, id_curso]);
+
+    res.json({ success: true, message: 'Curso eliminado del plan' });
+  } catch (err) {
+    console.error("Error eliminando curso:", err);
+    res.status(500).json({ error: 'Error eliminando curso del plan' });
+  }
+});
 
 //open port 
 app.listen(port, '0.0.0.0', () => {
