@@ -11,12 +11,14 @@ import {
   getEmpleadoInfo,
   getAllUsuariosActivos,
   getAllUsuarios,
+  getAllPuestos,
   getUsuariosPorDepartamento,
   getDepartamentos,
   getAllPersonal,
   getJerarquiaPersonal,
   getSubordinadosPorAprobador,
-  getSubordinadosKardex,
+  createPersonal,
+  updatePersonal,
   getAsistenciaPorCodigo,
   verificarUsuarioActivo
 } from './dbMSSQL.js';
@@ -132,9 +134,42 @@ app.get('/api/users/all', async (req, res) => {
   res.json(data);
 });
 
-app.get('/api/personal', async (req, res) => {
-  const data = await getAllPersonal();
+app.get('/api/puestos', async (req, res) => {
+  const data = await getAllPuestos();
   res.json(data);
+});
+
+app.get("/api/personal", async (req, res) => {
+  try {
+    const data = await getAllPersonal();
+    res.json(data);
+  } catch (error) {
+    console.error("❌ Error en GET /api/personal:", error.message);
+    res.status(500).json({ error: "Error al obtener datos" });
+  }
+});
+
+// POST: crear nuevo registro
+app.post("/api/personal", async (req, res) => {
+  try {
+    await createPersonal(req.body);
+    res.status(201).json({ message: "Registro creado correctamente" });
+  } catch (error) {
+    console.error("❌ Error en POST /api/personal:", error.message);
+    res.status(500).json({ error: "Error al crear el registro" });
+  }
+});
+
+// PUT: actualizar un registro existente
+app.put("/api/personal/:id", async (req, res) => {
+  const { id } = req.params;
+  try {
+    await updatePersonal(id, req.body);
+    res.json({ message: "Registro actualizado correctamente" });
+  } catch (error) {
+    console.error("❌ Error en PUT /api/personal/:id:", error.message);
+    res.status(500).json({ error: "Error al actualizar el registro" });
+  }
 });
 
 app.get('/api/users/by-department', async (req, res) => {

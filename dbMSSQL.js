@@ -9,6 +9,11 @@ const config = {
   server: process.env.MSSQL_SERVER,
   port: parseInt(process.env.MSSQL_PORT || '1433'),
   database: process.env.MSSQL_DB,
+  pool: {
+    max: 10,
+    min: 0,
+    idleTimeoutMillis: 30000 // 30 segundos
+  },
   options: {
     encrypt: false,
     trustServerCertificate: true
@@ -154,6 +159,22 @@ export const getAsistenciaPorCodigo = async (codigo) => {
   }
 };
 
+export const getAllPuestos = async () => {
+  try {
+    const pool = await sql.connect(config);
+    const result = await pool.request().query(`
+      SELECT DISTINCT Puesto
+      FROM personal
+      WHERE Puesto IS NOT NULL AND Puesto <> ''
+      ORDER BY Puesto
+    `);
+    return result.recordset.map(row => row.Puesto);
+  } catch (error) {
+    console.error("❌ Error getAllPuestos:", error.message);
+    return [];
+  }
+};
+
 // Todos los registros sin filtro
 export const getAllUsuarios = async () => {
   try {
@@ -178,17 +199,185 @@ export const getAllPersonal = async () => {
     const pool = await sql.connect(config);
     const result = await pool.request().query(`
       SELECT 
-        Personal, ApellidoPaterno, ApellidoMaterno, Nombre, Sexo, Estatus,
-        Puesto, Departamento, PeriodoTipo, TipoContrato, Jornada, TipoSueldo, FechaAntiguedad, Situacion, Registro AS CURP, EstadoCivil, Registro2 AS RFC, Registro3 AS NSS, Tipo, Direccion, DireccionNumero, DireccionNumeroInt, Colonia, Delegacion, Poblacion, Estado, Pais, CodigoPostal, Telefono, eMail, 
-        ZonaEconomica, FormaPago, CtaDinero, PersonalSucursal, PersonalCuenta, FechaNacimiento, LugarNacimiento, Nacionalidad, Beneficiario, Parentesco AS BeneficiarioParentesco, Porcentaje AS PorcentajeBeneficiario, Beneficiario2, Parentesco2,
-        Madre, Padre, ReportaA,
-        FORMAT(FechaAntiguedad, 'dd/MM/yyyy') AS FechaAlta
+        Personal,
+        ApellidoPaterno,
+        ApellidoMaterno,
+        Nombre,
+        Sexo,
+        Estatus,
+        Puesto,
+        Departamento,
+        PeriodoTipo,
+        TipoContrato,
+        Jornada,
+        TipoSueldo,
+        FORMAT(FechaAntiguedad, 'dd/MM/yyyy'),
+        Situacion,
+        Registro AS CURP,
+        EstadoCivil,
+        Registro2 AS RFC,
+        Registro3 AS NSS,
+        Tipo,
+        Direccion,
+        DireccionNumero,
+        DireccionNumeroInt,
+        Colonia,
+        Delegacion,
+        Poblacion,
+        Estado,
+        Pais,
+        CodigoPostal,
+        Telefono,
+        eMail,
+        ZonaEconomica,
+        FormaPago,
+        CtaDinero,
+        PersonalSucursal,
+        PersonalCuenta,
+        FORMAT(FechaNacimiento, 'dd/MM/yyyy') AS FechaNacimiento,
+        LugarNacimiento,
+        Nacionalidad,
+        Beneficiario,
+        Parentesco,
+        Porcentaje,
+        Beneficiario2,
+        Parentesco2,
+        Madre,
+        Padre,
+        ReportaA
       FROM personal
     `);
     return result.recordset;
   } catch (error) {
     console.error("❌ Error getAllUsuarios:", error.message);
     return [];
+  }
+};
+
+
+export const updatePersonal = async (id, data) => {
+  try {
+    const pool = await sql.connect(config);
+    const request = pool.request();
+
+    // ID obligatorio
+    request.input("id", sql.VarChar, id);
+
+    const setClauses = [];
+    const keys = Object.keys(data);
+
+    for (const key of keys) {
+      if (key === "Personal") continue;
+
+      const value = data[key];
+
+      // Determinar tipo SQL (usa Date para campos que lo necesitan)
+      const sqlType =
+        ["FechaNacimiento", "FechaAntiguedad"].includes(key) && value
+          ? sql.Date
+          : sql.VarChar;
+
+      // Agregar al SET solo si viene definido
+      if (value !== undefined) {
+        request.input(key, sqlType, value || null);
+        setClauses.push(`${key} = @${key}`);
+      }
+    }
+
+    if (setClauses.length === 0) {
+      throw new Error("No hay campos válidos para actualizar.");
+    }
+
+    const query = `
+      UPDATE personal
+      SET ${setClauses.join(", ")}
+      WHERE Personal = @id
+    `;
+
+    const result = await request.query(query);
+    return result;
+  } catch (error) {
+    console.error("❌ Error en updatePersonal:", error.message);
+    throw error;
+  }
+};
+
+
+export const createPersonal = async (data) => {
+  try {
+    const pool = await sql.connect(config);
+
+    const result = await pool
+      .request()
+      .input("Personal", sql.VarChar, data.Personal)
+      .input("ApellidoPaterno", sql.VarChar, data.ApellidoPaterno)
+      .input("ApellidoMaterno", sql.VarChar, data.ApellidoMaterno)
+      .input("Nombre", sql.VarChar, data.Nombre)
+      .input("Sexo", sql.VarChar, data.Sexo)
+      .input("Estatus", sql.VarChar, data.Estatus)
+      .input("Puesto", sql.VarChar, data.Puesto)
+      .input("Departamento", sql.VarChar, data.Departamento)
+      .input("PeriodoTipo", sql.VarChar, data.PeriodoTipo)
+      .input("TipoContrato", sql.VarChar, data.TipoContrato)
+      .input("Jornada", sql.VarChar, data.Jornada)
+      .input("TipoSueldo", sql.VarChar, data.TipoSueldo)
+      .input("FechaAntiguedad", sql.Date, data.FechaAntiguedad)
+      .input("Situacion", sql.VarChar, data.Situacion)
+      .input("CURP", sql.VarChar, data.CURP)
+      .input("EstadoCivil", sql.VarChar, data.EstadoCivil)
+      .input("RFC", sql.VarChar, data.RFC)
+      .input("NSS", sql.VarChar, data.NSS)
+      .input("Tipo", sql.VarChar, data.Tipo)
+      .input("Direccion", sql.VarChar, data.Direccion)
+      .input("DireccionNumero", sql.VarChar, data.DireccionNumero)
+      .input("DireccionNumeroInt", sql.VarChar, data.DireccionNumeroInt)
+      .input("Colonia", sql.VarChar, data.Colonia)
+      .input("Delegacion", sql.VarChar, data.Delegacion)
+      .input("Poblacion", sql.VarChar, data.Poblacion)
+      .input("Estado", sql.VarChar, data.Estado)
+      .input("Pais", sql.VarChar, data.Pais)
+      .input("CodigoPostal", sql.VarChar, data.CodigoPostal)
+      .input("Telefono", sql.VarChar, data.Telefono)
+      .input("eMail", sql.VarChar, data.eMail)
+      .input("ZonaEconomica", sql.VarChar, data.ZonaEconomica)
+      .input("FormaPago", sql.VarChar, data.FormaPago)
+      .input("CtaDinero", sql.VarChar, data.CtaDinero)
+      .input("PersonalSucursal", sql.VarChar, data.PersonalSucursal)
+      .input("PersonalCuenta", sql.VarChar, data.PersonalCuenta)
+      .input("FechaNacimiento", sql.Date, data.FechaNacimiento)
+      .input("LugarNacimiento", sql.VarChar, data.LugarNacimiento)
+      .input("Nacionalidad", sql.VarChar, data.Nacionalidad)
+      .input("Beneficiario", sql.VarChar, data.Beneficiario)
+      .input("BeneficiarioParentesco", sql.VarChar, data.BeneficiarioParentesco)
+      .input("PorcentajeBeneficiario", sql.VarChar, data.PorcentajeBeneficiario)
+      .input("Beneficiario2", sql.VarChar, data.Beneficiario2)
+      .input("Parentesco2", sql.VarChar, data.Parentesco2)
+      .input("Madre", sql.VarChar, data.Madre)
+      .input("Padre", sql.VarChar, data.Padre)
+      .input("ReportaA", sql.VarChar, data.ReportaA)
+      .query(`
+        INSERT INTO personal (
+          Personal, ApellidoPaterno, ApellidoMaterno, Nombre, Sexo, Estatus,
+          Puesto, Departamento, PeriodoTipo, TipoContrato, Jornada, TipoSueldo, FechaAntiguedad, Situacion,
+          Registro, EstadoCivil, Registro2, Registro3, Tipo,
+          Direccion, DireccionNumero, DireccionNumeroInt, Colonia, Delegacion, Poblacion, Estado, Pais, CodigoPostal, Telefono, eMail,
+          ZonaEconomica, FormaPago, CtaDinero, PersonalSucursal, PersonalCuenta, FechaNacimiento, LugarNacimiento, Nacionalidad,
+          Beneficiario, Parentesco, Porcentaje, Beneficiario2, Parentesco2, Madre, Padre, ReportaA
+        )
+        VALUES (
+          @Personal, @ApellidoPaterno, @ApellidoMaterno, @Nombre, @Sexo, @Estatus,
+          @Puesto, @Departamento, @PeriodoTipo, @TipoContrato, @Jornada, @TipoSueldo, @FechaAntiguedad, @Situacion,
+          @CURP, @EstadoCivil, @RFC, @NSS, @Tipo,
+          @Direccion, @DireccionNumero, @DireccionNumeroInt, @Colonia, @Delegacion, @Poblacion, @Estado, @Pais, @CodigoPostal, @Telefono, @eMail,
+          @ZonaEconomica, @FormaPago, @CtaDinero, @PersonalSucursal, @PersonalCuenta, @FechaNacimiento, @LugarNacimiento, @Nacionalidad,
+          @Beneficiario, @BeneficiarioParentesco, @PorcentajeBeneficiario, @Beneficiario2, @Parentesco2, @Madre, @Padre, @ReportaA
+        )
+      `);
+
+    return true;
+  } catch (err) {
+    console.error("❌ Error en createPersonal:", err.message);
+    throw err;
   }
 };
 
