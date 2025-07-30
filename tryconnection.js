@@ -27,7 +27,7 @@ import { updateVacaciones } from './dbMSSQL.js';
 import { datosSolicitanteHtml } from './renders.js';
 dotenv.config();
 
-import { procesarAprobacion } from './aprobacion.js';
+import { procesarAprobacion, reenviarCorreoAprobador} from './aprobacion.js';
 
 // 👇 Forma correcta de obtener __dirname en ES Modules
 const __filename = fileURLToPath(import.meta.url);
@@ -775,7 +775,6 @@ app.get('/posts', (req, res) => {
     });
 
     res.json(posts);
-    console.log(posts);
   });
 });
 
@@ -2441,6 +2440,20 @@ app.delete('/asignacionCursos/eliminar', async (req, res) => {
     console.error("Error eliminando curso:", err);
     res.status(500).json({ error: 'Error eliminando curso del plan' });
   }
+});
+
+
+// reenviar correo de aprobación
+app.post('/api/aprobaciones/reenviar', (req, res) => {
+  const { idAprobacion } = req.body;
+  if (!idAprobacion) return res.status(400).json({ error: 'ID de aprobación requerido' });
+
+  reenviarCorreoAprobador(idAprobacion)
+    .then(() => res.json({ success: true, message: 'Correo de aprobación reenviado' }))
+    .catch(err => {
+      console.error("Error reenviando correo de aprobación:", err);
+      res.status(500).json({ error: 'Error reenviando correo de aprobación' });
+    });
 });
 
 //open port 

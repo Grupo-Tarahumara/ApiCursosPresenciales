@@ -246,17 +246,23 @@ export async function procesarAprobacion(idAprobacion, estatus, nota) {
       return;
     }
     if (siguiente) {
+      const empleadosDb = await getJerarquiaPersonal();
+      const empleado = empleadosDb.find(e => e.Personal === mov.num_empleado.toString());
+
+      if (!empleado) {
+        throw new Error(`Empleado ${mov.num_empleado} no encontrado en jerarquía de empleados`);
+      }
+
       const datos = typeof mov.datos_json === 'string' ? JSON.parse(mov.datos_json) : mov.datos_json;
       const htmlExtra = renderDatosHtml(mov.tipo_movimiento, datos);
+
       const datosHtml = datosSolicitanteHtml(
-        datos.Nombre,
-        datos.num_empleado,
-        datos.Puesto,
-        datos.Departamento,
-        datos.FechaIngreso,
-        datos.Email,
-        datos.ApellidoPaterno,
-        datos.ApellidoMaterno
+        empleado.Nombre,
+        mov.num_empleado,
+        empleado.Puesto,
+        empleado.Departamento,
+        empleado.FechaIngreso,
+        empleado.Email
       );
 
       const enlace = `${process.env.API_BASE_URL}/api/aprobaciones/responder?token=${siguiente.token_aprobacion}`;
@@ -278,5 +284,91 @@ export async function procesarAprobacion(idAprobacion, estatus, nota) {
     await db.rollback();
     await db.end();
     throw error;
+  }
+}
+
+export async function reenviarCorreoAprobador(idAprobacion) {
+  const db = await returnConnection();
+
+  try {
+    // 🔍 Obtener datos de la jerarquía de empleados desde MSSQL
+    const empleadosDb = await getJerarquiaPersonal();
+
+    const [[aprobacion]] = await db.query(`
+      SELECT idMovimiento, id_aprobador, token_aprobacion
+      FROM aprobaciones_movimientos
+      WHERE idAprobacion = ?
+    `, [idAprobacion]);
+
+    if (!aprobacion) throw new Error("Aprobación no encontrada.");
+
+    const [[usuario]] = await db.query(`
+      SELECT name, email
+      FROM users
+      WHERE num_empleado = ?
+    `, [aprobacion.id_aprobador]);
+
+    const [[movimiento]] = await db.query(`
+      SELECT num_empleado, tipo_movimiento, datos_json, comentarios
+      FROM movimientos_personal
+      WHERE idMovimiento = ?
+    `, [aprobacion.idMovimiento]);
+
+    const datosJson = typeof movimiento.datos_json === 'string'
+      ? JSON.parse(movimiento.datos_json)
+      : movimiento.datos_json;
+
+    // 🔍 Buscar al empleado en la jerarquía
+    const empleado = empleadosDb.find(e => e.Personal === movimiento.num_empleado.toString());
+
+    if (!empleado) {
+      throw new Error(`Empleado ${movimiento.num_empleado} no encontrado en jerarquía MSSQL`);
+    }
+
+    const htmlExtra = renderDatosHtml(movimiento.tipo_movimiento, datosJson);
+    const datosHtml = datosSolicitanteHtml(
+      empleado.Nombre,
+      movimiento.num_empleado,
+      empleado.Puesto,
+      empleado.Departamento,
+      empleado.FechaIngreso,
+      empleado.Email
+    );
+
+    const enlace = `${process.env.API_BASE_URL}/api/aprobaciones/responder?token=${aprobacion.token_aprobacion}`;
+    const htmlCorreo = generarCorreoAprobador(
+      usuario.name,
+      movimiento.tipo_movimiento,
+      htmlExtra,
+      datosHtml,
+      movimiento.comentarios,
+      enlace
+    );
+
+    // 🧾 Imprimir todo antes de enviar
+    console.log("🔁 Preparando reenvío de aprobación:");
+    console.log("👤 Aprobador:", usuario.name);
+    console.log("📧 Email:", usuario.email);
+    console.log("📄 Tipo de movimiento:", movimiento.tipo_movimiento);
+    console.log("🗒️ Comentarios:", movimiento.comentarios);
+    console.log("📇 Datos del solicitante:", empleado);
+    console.log("🔗 Enlace de respuesta:", enlace);
+    console.log("📬 HTML del correo:");
+    console.log(htmlCorreo);
+
+    // ✅ Descomenta esto cuando confirmes
+    await enviarCorreo(
+      usuario.email,
+      "🚨 Tienes un movimiento de personal pendiente por aprobar",
+      htmlCorreo
+    );
+
+    console.log("✅ Fin del proceso de preparación (correo no enviado aún)");
+
+  } catch (error) {
+    console.error("❌ Error reenviando correo al aprobador:", error);
+    throw error;
+  } finally {
+    await db.end();
   }
 }
