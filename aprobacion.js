@@ -359,7 +359,7 @@ export async function reenviarCorreoAprobador(idAprobacion) {
     // ✅ Descomenta esto cuando confirmes
     await enviarCorreo(
       usuario.email,
-      "🔁 Reenvío de solicitud de movimiento de personal",
+      "🚨 Tienes un movimiento de personal pendiente por aprobar",
       htmlCorreo
     );
 
