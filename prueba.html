@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Confirmación</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f3f4f6;
+      color: #333;
+      margin: 0;
+      padding: 20px;
+    }
+
+    .container {
+      background-color: #fff;
+      padding: 30px 40px;
+      border-radius: 12px;
+      border: 2px solid #9A3324;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+      max-width: 700px;
+      margin: 40px auto;
+    }
+
+    .logos {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    h1 {
+      color: #9A3324;
+      text-align: center;
+      font-size: 28px;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      text-align: center;
+      font-size: 18px;
+      color: #555;
+      margin-bottom: 30px;
+    }
+
+    p {
+      font-size: 17px;
+      margin: 10px 0;
+      line-height: 1.5;
+    }
+
+    .highlight {
+      font-weight: 600;
+      color: #9A3324;
+    }
+
+    .footer {
+      margin-top: 40px;
+      text-align: center;
+      font-size: 14px;
+      color: #888;
+    }
+
+    .copyright {
+      margin-top: 10px;
+      font-size: 13px;
+      color: #aaa;
+    }
+
+    @media (max-width: 600px) {
+      .logos {
+        flex-direction: column;
+        gap: 10px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logos">
+      <img src="https://custom-images.strikinglycdn.com/res/hrscywv4p/image/upload/c_limit,fl_lossy,h_300,w_300,f_auto,q_auto/6088316/314367_858588.png" width="120" alt="Logo 1">
+      <img src="https://4dxos.com/images/login/logo.png" alt="Logo 2" width="80">
+    </div>
+
+    <h1>Modelo de Cambio</h1>
+    <div class="subtitle">Respuestas del Formulario</div>
+
+    <p><span class="highlight">Equipo:</span> @{outputs('Obtener_los_detalles_de_la_respuesta')?['body/r60585ca5ddf74c009fc6ef7a9f4d2db2']}</p>
+    <p><span class="highlight">Campeón o Coach:</span> @{outputs('Obtener_los_detalles_de_la_respuesta')?['body/r8f45470dd53e4718847507a96f323bc4']}</p>
+    <p><span class="highlight">Zona del Estatus QUO:</span> @{outputs('Obtener_los_detalles_de_la_respuesta')?['body/r7d7e1fe49b7040cab889fd95ff9e9b1c']}</p>
+    <p><span class="highlight">Zona de Disrupción:</span> @{outputs('Obtener_los_detalles_de_la_respuesta')?['body/rf884033ec61c47c6801a8ac67d58dc6b']}</p>
+    <p><span class="highlight">Zona de Adopción:</span> @{outputs('Obtener_los_detalles_de_la_respuesta')?['body/r52f7330f79484bc5be835c3d5c421eee']}</p>
+    <p><span class="highlight">Zona de Mejor Desempeño:</span> @{outputs('Obtener_los_detalles_de_la_respuesta')?['body/r3e5bb5653ae84c2091a51a0a1ec614e1']}</p>
+    <p><span class="highlight">Total:</span> @{outputs('Obtener_una_fila')?['body/Total']}</p>
+    <p><span class="highlight">Estatus:</span> @{outputs('Obtener_una_fila')?['body/Estatus']}</p>
+
+    <div class="footer">
+      <p>Gracias por tu participación.</p>
+      <div class="copyright">
+        © 2025 Grupo Tarahumara · Diseñado por el Departamento de Sistemas
+      </div>
+    </div>
+  </div>
+</body>
+</html>

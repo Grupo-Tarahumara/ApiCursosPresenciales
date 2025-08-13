@@ -15,6 +15,7 @@ import {
   getUsuariosPorDepartamento,
   getDepartamentos,
   getAllPersonal,
+  getUsuarioById,
   getJerarquiaPersonal,
   getSubordinadosPorAprobador,
   createPersonal,
@@ -148,6 +149,24 @@ app.get("/api/personal", async (req, res) => {
     res.status(500).json({ error: "Error al obtener datos" });
   }
 });
+
+// Endpoint para traer un solo empleado por su ID
+app.get("/api/personal/:id", async (req, res) => {
+  try {
+    const { id } = req.params; // Captura el parámetro de la URL
+    const data = await getUsuarioById(id);
+
+    if (!data) {
+      return res.status(404).json({ error: "Empleado no encontrado" });
+    }
+
+    res.json(data);
+  } catch (error) {
+    console.error("❌ Error en GET /api/personal/:id:", error.message);
+    res.status(500).json({ error: "Error al obtener empleado" });
+  }
+});
+
 
 // POST: crear nuevo registro
 app.post("/api/personal", async (req, res) => {
@@ -1573,13 +1592,26 @@ app.get('/api/movimientos/mios/:num_empleado', async (req, res) => {
       mp.datos_json,
       mp.comentarios,
       (
-        SELECT GROUP_CONCAT(CONCAT_WS(' - ', am.id_aprobador, am.estatus) ORDER BY am.orden ASC)
+        SELECT GROUP_CONCAT(
+          CONCAT_WS(' - ', am.id_aprobador, am.estatus)
+          ORDER BY am.orden ASC
+        )
         FROM aprobaciones_movimientos am
         WHERE am.idMovimiento = mp.idMovimiento
-      ) AS historial_aprobaciones
+      ) AS historial_aprobaciones,
+      (
+        SELECT GROUP_CONCAT(am.IdAprobacion ORDER BY am.orden ASC)
+        FROM aprobaciones_movimientos am
+        WHERE am.idMovimiento = mp.idMovimiento
+      ) AS id_aprobaciones_lista,
+      (
+        SELECT GROUP_CONCAT(am.estatus ORDER BY am.orden ASC)
+        FROM aprobaciones_movimientos am
+        WHERE am.idMovimiento = mp.idMovimiento
+      ) AS estatus_aprobaciones
     FROM movimientos_personal mp
     WHERE mp.num_empleado = ?
-    ORDER BY mp.fecha_solicitud DESC
+    ORDER BY mp.fecha_solicitud DESC;
   `;
 
   db.query(query, [num_empleado], async (err, rows) => {
@@ -2118,6 +2150,303 @@ app.post('/etapas/asignarCursos', async (req, res) => {
     console.error("Error asignando cursos:", err);
     res.status(500).json({ error: 'Error asignando cursos' });
   }
+});
+
+  app.post("/api/malla", (req, res) => {
+  console.log("📦 /api/malla body:", JSON.stringify(req.body, null, 2)); // <-- temporal de debug
+  const { plan, etapas } = req.body;
+
+  if (!plan || !etapas || etapas.length === 0) {
+    return res.status(400).send("Faltan datos obligatorios.");
+  }
+
+  db.query("SELECT id_plan FROM planes WHERE nombre = ?", [plan], (err, resultPlan) => {
+    if (err) {
+      console.error("❌ Error al consultar plan:", err);
+      return res.status(500).send("Error al consultar plan.");
+    }
+
+    const continuar = (idPlanReal) => {
+      let etapasPendientes = etapas.length;
+      if (etapasPendientes === 0) return res.send("Malla vacía");
+
+      const finEtapa = () => {
+        if (--etapasPendientes === 0) {
+          return res.status(201).send("✅ Malla curricular guardada correctamente.");
+        }
+      };
+
+      etapas.forEach((etapa) => {
+        db.query(
+          "INSERT INTO etapas (id_plan, nombre) VALUES (?, ?)",
+          [idPlanReal, etapa.nombre],
+          (errEt, resultEtapa) => {
+            if (errEt) {
+              console.error("❌ Error al insertar etapa:", errEt);
+              return res.status(500).send("Error al insertar etapa.");
+            }
+
+            const idEtapa = resultEtapa.insertId;
+
+            // Si llegan subcategorías, usamos las tablas nuevas
+            const subcats = Array.isArray(etapa.subcategorias) ? etapa.subcategorias : [];
+
+            if (subcats.length > 0) {
+              let subPendientes = subcats.length;
+              const finSub = () => {
+                if (--subPendientes === 0) finEtapa();
+              };
+
+              subcats.forEach((sub) => {
+                db.query(
+                  "INSERT INTO subcategorias (id_etapa, nombre) VALUES (?, ?)",
+                  [idEtapa, sub.nombre],
+                  (errSub, rSub) => {
+                    if (errSub) {
+                      console.error("❌ Error al insertar subcategoría:", errSub);
+                      return res.status(500).send("Error al insertar subcategoría.");
+                    }
+                    const idSub = rSub.insertId;
+
+                    const cursos = Array.isArray(sub.cursos) ? sub.cursos : [];
+                    if (cursos.length === 0) return finSub();
+
+                    let cursosPend = cursos.length;
+                    const finCurso = () => {
+                      if (--cursosPend === 0) finSub();
+                    };
+
+                    cursos.forEach((c) => {
+                      db.query(
+                        "INSERT INTO subcategorias_cursos (id_subcategoria, id_course) VALUES (?, ?)",
+                        [idSub, c.id_course],
+                        (errSC) => {
+                          if (errSC) {
+                            console.error("❌ Error al insertar curso en subcategoría:", errSC);
+                            return res.status(500).send("Error al insertar curso.");
+                          }
+                          finCurso();
+                        }
+                      );
+                    });
+                  }
+                );
+              });
+
+              return; // importante: no seguir a la rama de 'cursos' de etapa
+            }
+
+            // Si NO hay subcategorías, seguimos con el comportamiento anterior (etapas_cursos)
+            const cursos = Array.isArray(etapa.cursos) ? etapa.cursos : [];
+            if (cursos.length === 0) return finEtapa();
+
+            let cursosPendientes = cursos.length;
+            const finCursoEtapa = () => {
+              if (--cursosPendientes === 0) finEtapa();
+            };
+
+            cursos.forEach((curso) => {
+              db.query(
+                "INSERT INTO etapas_cursos (id_etapa, id_course) VALUES (?, ?)",
+                [idEtapa, curso.id_course],
+                (errEC) => {
+                  if (errEC) {
+                    console.error("❌ Error al insertar curso:", errEC);
+                    return res.status(500).send("Error al insertar curso.");
+                  }
+                  finCursoEtapa();
+                }
+              );
+            });
+          }
+        );
+      });
+    };
+
+    if (resultPlan.length > 0) {
+      continuar(resultPlan[0].id_plan);
+    } else {
+      db.query("INSERT INTO planes (nombre) VALUES (?)", [plan], (errIns, resultInsert) => {
+        if (errIns) {
+          console.error("❌ Error al insertar plan:", errIns);
+          return res.status(500).send("Error al insertar nuevo plan.");
+        }
+        continuar(resultInsert.insertId);
+      });
+    }
+  });
+  });
+
+
+  app.get("/api/malla/:plan", async (req, res) => {
+  const planNombre = decodeURIComponent(req.params.plan);
+
+  try {
+    const [planRows] = await db.promise().query(
+      "SELECT id_plan FROM planes WHERE nombre = ?",
+      [planNombre]
+    );
+    if (planRows.length === 0) {
+      return res.status(404).json({ message: "Plan no encontrado" });
+    }
+    const idPlan = planRows[0].id_plan;
+
+    const [etapasRows] = await db.promise().query(
+      "SELECT id_etapa, nombre FROM etapas WHERE id_plan = ?",
+      [idPlan]
+    );
+
+    const etapasConTodo = [];
+    for (const etapa of etapasRows) {
+      // cursos directos a etapa (legacy)
+      const [cursosEtapa] = await db.promise().query(
+        `SELECT cp.id_course, cp.title, cp.description, cp.tutor, cp.category
+         FROM etapas_cursos ec
+         JOIN cursos_presenciales cp ON ec.id_course = cp.id_course
+         WHERE ec.id_etapa = ?`,
+        [etapa.id_etapa]
+      );
+
+      // subcategorías y cursos por subcategoría (nuevo)
+      const [subcats] = await db.promise().query(
+        "SELECT id_subcategoria, nombre FROM subcategorias WHERE id_etapa = ?",
+        [etapa.id_etapa]
+      );
+
+      const subcategorias = [];
+      for (const sub of subcats) {
+        const [cursosSub] = await db.promise().query(
+          `SELECT cp.id_course, cp.title, cp.description, cp.tutor, cp.category
+           FROM subcategorias_cursos sc
+           JOIN cursos_presenciales cp ON sc.id_course = cp.id_course
+           WHERE sc.id_subcategoria = ?`,
+          [sub.id_subcategoria]
+        );
+        subcategorias.push({
+          id_subcategoria: sub.id_subcategoria,
+          nombre: sub.nombre,
+          cursos: cursosSub,
+        });
+      }
+
+      etapasConTodo.push({
+        id_etapa: etapa.id_etapa,
+        nombre: etapa.nombre,
+        cursos: cursosEtapa,       // legacy
+        subcategorias,             // nuevo
+      });
+    }
+
+    res.json({ plan: planNombre, etapas: etapasConTodo });
+  } catch (error) {
+    console.error("❌ Error al obtener la malla:", error);
+    res.status(500).json({ message: "Error al obtener la malla curricular" });
+  }
+});
+
+
+app.post('/malla', async (req, res) => {
+  try {
+    const { puesto, malla } = req.body;
+
+    if (!puesto || !malla || !Array.isArray(malla)) {
+      return res.status(400).json({ error: "Datos inválidos" });
+    }
+
+    const connection = returnConnection();
+
+    for (const categoria of malla) {
+      for (const sub of categoria.subcategorias) {
+        for (const curso of sub.cursos) {
+          await connection.query(
+            `INSERT INTO malla_curricular (puesto, id_categoria, id_subcategoria, id_course)
+             VALUES (?, ?, ?, ?)`,
+            [puesto, categoria.id_categoria, sub.id_subcategoria, curso.id_course]
+          );
+        }
+      }
+    }
+
+    res.json({ success: true, message: "Malla curricular guardada correctamente" });
+  } catch (error) {
+    console.error("❌ Error al guardar malla:", error);
+    res.status(500).json({ error: "Error en la base de datos" });
+  }
+});
+
+
+
+app.get('/malla/:puesto', async (req, res) => {
+  const { puesto } = req.params;
+  const connection = returnConnection();
+
+  try {
+    const [rows] = await connection.promise().query(`
+      SELECT
+        mc.id_categoria, c.nombre AS nombre_categoria,
+        mc.id_subcategoria, s.nombre AS nombre_subcategoria,
+        cp.id_course, cp.title, cp.description
+      FROM malla_curricular mc
+      JOIN categorias c ON mc.id_categoria = c.id_categoria
+      JOIN subcategorias s ON mc.id_subcategoria = s.id_subcategoria
+      JOIN cursos_presenciales cp ON mc.id_course = cp.id_course
+      WHERE mc.puesto = ?
+    `, [puesto]);
+
+    const grouped = {};
+
+    for (const row of rows) {
+      if (!grouped[row.id_categoria]) {
+        grouped[row.id_categoria] = {
+          id_categoria: row.id_categoria,
+          nombre: row.nombre_categoria,
+          subcategorias: {},
+        };
+      }
+
+      const cat = grouped[row.id_categoria];
+
+      if (!cat.subcategorias[row.id_subcategoria]) {
+        cat.subcategorias[row.id_subcategoria] = {
+          id_subcategoria: row.id_subcategoria,
+          nombre: row.nombre_subcategoria,
+          cursos: [],
+        };
+      }
+
+      cat.subcategorias[row.id_subcategoria].cursos.push({
+        id_course: row.id_course,
+        title: row.title,
+        description: row.description,
+      });
+    }
+
+    const malla = Object.values(grouped).map((cat) => ({
+      id_categoria: cat.id_categoria,
+      nombre: cat.nombre,
+      subcategorias: Object.values(cat.subcategorias),
+    }));
+
+    res.json({ puesto, malla });
+  } catch (err) {
+    console.error("❌ Error al obtener malla:", err);
+    res.status(500).json({ error: "Error al obtener la malla" });
+  }
+});
+
+
+  // SIN prefijo /api
+app.get("/categorias", (req, res) => {
+  const query = "SELECT * FROM categorias";
+
+  db.query(query, (err, results) => {
+    if (err) {
+      console.error("❌ Error al obtener categorías:", err);
+      return res.status(500).json({ success: false, message: "Error al obtener categorías" });
+    }
+
+    res.json(results);
+  });
 });
 
 

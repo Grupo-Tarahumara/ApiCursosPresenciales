@@ -14,6 +14,7 @@ import {
   getAsistenciaPorCodigo
 } from './dbMSSQL.js';
 import { updateVacaciones } from './dbMSSQL.js';
+import e from 'express';
 dotenv.config();
 
 // Configuración de conexión a la base de datos MySQL
@@ -309,7 +310,7 @@ export async function reenviarCorreoAprobador(idAprobacion) {
     `, [aprobacion.id_aprobador]);
 
     const [[movimiento]] = await db.query(`
-      SELECT num_empleado, tipo_movimiento, datos_json, comentarios
+      SELECT num_empleado, tipo_movimiento, datos_json, comentarios, fecha_incidencia
       FROM movimientos_personal
       WHERE idMovimiento = ?
     `, [aprobacion.idMovimiento]);
@@ -332,8 +333,17 @@ export async function reenviarCorreoAprobador(idAprobacion) {
       empleado.Puesto,
       empleado.Departamento,
       empleado.FechaIngreso,
-      empleado.Email
+      empleado.Email,
+      empleado.ApellidoPaterno,
+      empleado.ApellidoMaterno,
     );
+
+    const fecha = new Date(movimiento.fecha_incidencia);
+    const fechaFormateada = fecha.toLocaleDateString('es-MX', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+    });
 
     const enlace = `${process.env.API_BASE_URL}/api/aprobaciones/responder?token=${aprobacion.token_aprobacion}`;
     const htmlCorreo = generarCorreoAprobador(
@@ -342,7 +352,8 @@ export async function reenviarCorreoAprobador(idAprobacion) {
       htmlExtra,
       datosHtml,
       movimiento.comentarios,
-      enlace
+      enlace,
+      fechaFormateada
     );
 
     // 🧾 Imprimir todo antes de enviar
@@ -363,7 +374,7 @@ export async function reenviarCorreoAprobador(idAprobacion) {
       htmlCorreo
     );
 
-    console.log("✅ Fin del proceso de preparación (correo no enviado aún)");
+    console.log("✅ Fin del proceso de preparación");
 
   } catch (error) {
     console.error("❌ Error reenviando correo al aprobador:", error);

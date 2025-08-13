@@ -116,6 +116,29 @@ export const getAllUsuariosActivos = async () => {
   }
 };
 
+export const getUsuarioById = async (personalId) => {
+  try {
+    const pool = await sql.connect(config);
+    const result = await pool.request()
+      .input("PersonalId", sql.VarChar, personalId)
+      .query(`
+        SELECT 
+          Personal, ApellidoPaterno, ApellidoMaterno, Nombre, Estatus,
+          Puesto, Jornada, Permiso, Departamento, PeriodoTipo,
+          vacaciones_acumuladas, vacaciones_ley,
+          Registro2 AS RFC, Registro3 AS NSS,
+          FORMAT(FechaAntiguedad, 'dd/MM/yyyy') AS FechaAlta
+        FROM personal
+        WHERE Personal = @PersonalId
+      `);
+    return result.recordset[0] || null;
+  } catch (error) {
+    console.error("❌ Error getUsuarioById:", error.message);
+    return null;
+  }
+};
+
+
 export const getAsistenciaPorCodigo = async (codigo) => {
   try {
     const pool = await poolPromise;
@@ -211,10 +234,11 @@ export const getAllPersonal = async () => {
         TipoContrato,
         Jornada,
         TipoSueldo,
-        FORMAT(FechaAntiguedad, 'dd/MM/yyyy'),
+        FORMAT(FechaAntiguedad, 'dd/MM/yyyy') AS FechaAntiguedad,
         Situacion,
         Registro AS CURP,
         EstadoCivil,
+        NivelAcademico,
         Registro2 AS RFC,
         Registro3 AS NSS,
         Tipo,
@@ -238,10 +262,23 @@ export const getAllPersonal = async () => {
         LugarNacimiento,
         Nacionalidad,
         Beneficiario,
-        Parentesco,
-        Porcentaje,
+        BeneficiarioRFC,
+        BeneficiarioDomicilio,
+        BeneficiarioNacimiento,
+        Parentesco AS BeneficiarioParentesco,
+        Porcentaje AS PorcentajeBeneficiario,
         Beneficiario2,
+        Beneficiario2RFC,
+        Beneficiario2Domicilio,
+        Beneficiario2Nacimiento,
         Parentesco2,
+        Porcentaje2,
+        Beneficiario3,
+        Beneficiario3RFC,
+        Beneficiario3Domicilio,
+        Beneficiario3Nacimiento,
+        Parentesco3,
+        Porcentaje3,
         Madre,
         Padre,
         ReportaA
