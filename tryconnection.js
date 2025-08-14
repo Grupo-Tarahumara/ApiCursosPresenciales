@@ -2153,129 +2153,258 @@ app.post('/etapas/asignarCursos', async (req, res) => {
 });
 
   app.post("/api/malla", (req, res) => {
-  console.log("📦 /api/malla body:", JSON.stringify(req.body, null, 2)); // <-- temporal de debug
   const { plan, etapas } = req.body;
-
-  if (!plan || !etapas || etapas.length === 0) {
+  if (!plan || !Array.isArray(etapas)) {
     return res.status(400).send("Faltan datos obligatorios.");
   }
 
-  db.query("SELECT id_plan FROM planes WHERE nombre = ?", [plan], (err, resultPlan) => {
-    if (err) {
-      console.error("❌ Error al consultar plan:", err);
-      return res.status(500).send("Error al consultar plan.");
+  const norm = (s) => (s ?? "").toString().trim();
+  const lower = (s) => norm(s).toLowerCase();
+
+  let idPlan = null;
+  let etapasDB = [];           // [{id_etapa,nombre}]
+  const keepEtapaIds = [];     // ids de etapas que deben sobrevivir
+
+  const fail = (err, code = 500) => {
+    console.error("❌ /api/malla:", err);
+    db.rollback(() => res.status(code).send("Error al actualizar malla."));
+  };
+
+  db.beginTransaction((err) => {
+    if (err) return fail(err);
+
+    // 1) Obtener/crear plan
+    db.query("SELECT id_plan FROM planes WHERE nombre = ?", [plan], (e1, r1) => {
+      if (e1) return fail(e1);
+      if (r1.length) {
+        idPlan = r1[0].id_plan;
+        stepFetchEtapas();
+      } else {
+        db.query("INSERT INTO planes (nombre) VALUES (?)", [plan], (e2, r2) => {
+          if (e2) return fail(e2);
+          idPlan = r2.insertId;
+          stepFetchEtapas();
+        });
+      }
+    });
+
+    // 2) Etapas existentes del plan
+    function stepFetchEtapas() {
+      db.query("SELECT id_etapa, nombre FROM etapas WHERE id_plan = ?", [idPlan], (e, r) => {
+        if (e) return fail(e);
+        etapasDB = r || [];
+        processEtapa(0, new Map(etapasDB.map((x) => [lower(x.nombre), x])));
+      });
     }
 
-    const continuar = (idPlanReal) => {
-      let etapasPendientes = etapas.length;
-      if (etapasPendientes === 0) return res.send("Malla vacía");
+    // 3) Procesar etapas del payload (secuencial)
+    function processEtapa(i, etapaByName) {
+      if (i >= etapas.length) return deleteOldEtapas(); // siguiente fase
 
-      const finEtapa = () => {
-        if (--etapasPendientes === 0) {
-          return res.status(201).send("✅ Malla curricular guardada correctamente.");
+      const etapa = etapas[i];
+      const nombreEtapa = norm(etapa.nombre);
+      const key = lower(etapa.nombre);
+
+      let idEtapa = null;
+
+      const upsertEtapa = (done) => {
+        const row = etapaByName.get(key);
+        if (row) {
+          idEtapa = row.id_etapa;
+          // actualiza casing por si cambió
+          db.query("UPDATE etapas SET nombre=? WHERE id_etapa=?", [nombreEtapa, idEtapa], (e) => {
+            if (e) return done(e);
+            keepEtapaIds.push(idEtapa);
+            done();
+          });
+        } else {
+          db.query("INSERT INTO etapas (id_plan, nombre) VALUES (?, ?)", [idPlan, nombreEtapa], (e, r) => {
+            if (e) return done(e);
+            idEtapa = r.insertId;
+            keepEtapaIds.push(idEtapa);
+            done();
+          });
         }
       };
 
-      etapas.forEach((etapa) => {
-        db.query(
-          "INSERT INTO etapas (id_plan, nombre) VALUES (?, ?)",
-          [idPlanReal, etapa.nombre],
-          (errEt, resultEtapa) => {
-            if (errEt) {
-              console.error("❌ Error al insertar etapa:", errEt);
-              return res.status(500).send("Error al insertar etapa.");
-            }
+      upsertEtapa((errUp) => {
+        if (errUp) return fail(errUp);
 
-            const idEtapa = resultEtapa.insertId;
+        // Subcategorías existentes de esta etapa
+        db.query("SELECT id_subcategoria, nombre FROM subcategorias WHERE id_etapa=?", [idEtapa], (eSub, subDB) => {
+          if (eSub) return fail(eSub);
 
-            // Si llegan subcategorías, usamos las tablas nuevas
-            const subcats = Array.isArray(etapa.subcategorias) ? etapa.subcategorias : [];
+          const subByName = new Map((subDB || []).map((x) => [lower(x.nombre), x]));
+          const keepSubIds = [];
 
-            if (subcats.length > 0) {
-              let subPendientes = subcats.length;
-              const finSub = () => {
-                if (--subPendientes === 0) finEtapa();
-              };
+          const subcats = Array.isArray(etapa.subcategorias) ? etapa.subcategorias : [];
 
-              subcats.forEach((sub) => {
-                db.query(
-                  "INSERT INTO subcategorias (id_etapa, nombre) VALUES (?, ?)",
-                  [idEtapa, sub.nombre],
-                  (errSub, rSub) => {
-                    if (errSub) {
-                      console.error("❌ Error al insertar subcategoría:", errSub);
-                      return res.status(500).send("Error al insertar subcategoría.");
-                    }
-                    const idSub = rSub.insertId;
+          // Procesar subcategorías secuencialmente
+          processSub(0);
 
-                    const cursos = Array.isArray(sub.cursos) ? sub.cursos : [];
-                    if (cursos.length === 0) return finSub();
+          function processSub(j) {
+            if (j >= subcats.length) return deleteOldSubs(); // siguiente fase
 
-                    let cursosPend = cursos.length;
-                    const finCurso = () => {
-                      if (--cursosPend === 0) finSub();
-                    };
+            const sub = subcats[j];
+            const nombreSub = norm(sub.nombre);
+            const subKey = lower(sub.nombre);
+            let idSub = null;
 
-                    cursos.forEach((c) => {
-                      db.query(
-                        "INSERT INTO subcategorias_cursos (id_subcategoria, id_course) VALUES (?, ?)",
-                        [idSub, c.id_course],
-                        (errSC) => {
-                          if (errSC) {
-                            console.error("❌ Error al insertar curso en subcategoría:", errSC);
-                            return res.status(500).send("Error al insertar curso.");
-                          }
-                          finCurso();
-                        }
-                      );
-                    });
-                  }
-                );
-              });
-
-              return; // importante: no seguir a la rama de 'cursos' de etapa
-            }
-
-            // Si NO hay subcategorías, seguimos con el comportamiento anterior (etapas_cursos)
-            const cursos = Array.isArray(etapa.cursos) ? etapa.cursos : [];
-            if (cursos.length === 0) return finEtapa();
-
-            let cursosPendientes = cursos.length;
-            const finCursoEtapa = () => {
-              if (--cursosPendientes === 0) finEtapa();
+            const upsertSub = (done) => {
+              const row = subByName.get(subKey);
+              if (row) {
+                idSub = row.id_subcategoria;
+                db.query("UPDATE subcategorias SET nombre=? WHERE id_subcategoria=?", [nombreSub, idSub], (e) => {
+                  if (e) return done(e);
+                  keepSubIds.push(idSub);
+                  done();
+                });
+              } else {
+                db.query("INSERT INTO subcategorias (id_etapa, nombre) VALUES (?, ?)", [idEtapa, nombreSub], (e, r) => {
+                  if (e) return done(e);
+                  idSub = r.insertId;
+                  keepSubIds.push(idSub);
+                  done();
+                });
+              }
             };
 
-            cursos.forEach((curso) => {
+            upsertSub((errS) => {
+              if (errS) return fail(errS);
+
+              // Cursos de esta subcategoría
+              const incoming = new Set(
+                (Array.isArray(sub.cursos) ? sub.cursos : []).map((c) => Number(c.id_course))
+              );
+
               db.query(
-                "INSERT INTO etapas_cursos (id_etapa, id_course) VALUES (?, ?)",
-                [idEtapa, curso.id_course],
-                (errEC) => {
-                  if (errEC) {
-                    console.error("❌ Error al insertar curso:", errEC);
-                    return res.status(500).send("Error al insertar curso.");
+                "SELECT id_course FROM subcategorias_cursos WHERE id_subcategoria=?",
+                [idSub],
+                (eC, rowsC) => {
+                  if (eC) return fail(eC);
+
+                  const existing = new Set((rowsC || []).map((r) => Number(r.id_course)));
+
+                  // Inserta faltantes (uno por uno)
+                  const toInsert = [...incoming].filter((x) => !existing.has(x));
+                  insertCourse(0, toInsert, () => {
+                    // Elimina cursos que ya no vengan
+                    const toDelete = [...existing].filter((x) => !incoming.has(x));
+                    if (toDelete.length === 0) return nextSub();
+
+                    db.query(
+                      `DELETE FROM subcategorias_cursos WHERE id_subcategoria=? AND id_course IN (?)`,
+                      [idSub, toDelete],
+                      (eDel) => {
+                        if (eDel) return fail(eDel);
+                        nextSub();
+                      }
+                    );
+                  });
+
+                  function insertCourse(k, arr, done) {
+                    if (k >= arr.length) return done();
+                    db.query(
+                      // IGNORE evita error si ya existe un único (id_subcategoria,id_course)
+                      "INSERT IGNORE INTO subcategorias_cursos (id_subcategoria, id_course) VALUES (?, ?)",
+                      [idSub, arr[k]],
+                      (eIns) => {
+                        if (eIns) return fail(eIns);
+                        insertCourse(k + 1, arr, done);
+                      }
+                    );
                   }
-                  finCursoEtapa();
+
+                  function nextSub() {
+                    processSub(j + 1);
+                  }
                 }
               );
             });
           }
-        );
-      });
-    };
 
-    if (resultPlan.length > 0) {
-      continuar(resultPlan[0].id_plan);
-    } else {
-      db.query("INSERT INTO planes (nombre) VALUES (?)", [plan], (errIns, resultInsert) => {
-        if (errIns) {
-          console.error("❌ Error al insertar plan:", errIns);
-          return res.status(500).send("Error al insertar nuevo plan.");
+          // Borra subcategorías que ya no están en el payload (y sus cursos)
+          function deleteOldSubs() {
+            if (!subDB || subDB.length === 0) return processEtapa(i + 1, etapaByName);
+
+            const allSubIds = subDB.map((r) => r.id_subcategoria);
+            const toDeleteSubs = allSubIds.filter((id) => keepSubIds.indexOf(id) === -1);
+
+            if (toDeleteSubs.length === 0) return processEtapa(i + 1, etapaByName);
+
+            db.query(
+              `DELETE FROM subcategorias_cursos WHERE id_subcategoria IN (?)`,
+              [toDeleteSubs],
+              (e1) => {
+                if (e1) return fail(e1);
+                db.query(
+                  `DELETE FROM subcategorias WHERE id_subcategoria IN (?)`,
+                  [toDeleteSubs],
+                  (e2) => {
+                    if (e2) return fail(e2);
+                    processEtapa(i + 1, etapaByName);
+                  }
+                );
+              }
+            );
+          }
+        });
+      });
+    }
+
+    // 4) Eliminar etapas que ya no vienen en el payload
+    function deleteOldEtapas() {
+      if (!etapasDB || etapasDB.length === 0) return finishOK();
+
+      const allEtapaIds = etapasDB.map((r) => r.id_etapa);
+      const toDeleteEtapas = allEtapaIds.filter((id) => keepEtapaIds.indexOf(id) === -1);
+
+      if (toDeleteEtapas.length === 0) return finishOK();
+
+      // conseguir subcategorías de esas etapas para borrar cascada manual
+      db.query(
+        `SELECT id_subcategoria FROM subcategorias WHERE id_etapa IN (?)`,
+        [toDeleteEtapas],
+        (eS, rowsS) => {
+          if (eS) return fail(eS);
+
+          const subIds = (rowsS || []).map((r) => r.id_subcategoria);
+          const delSubs = (next) => {
+            if (subIds.length === 0) return next();
+            db.query(
+              `DELETE FROM subcategorias_cursos WHERE id_subcategoria IN (?)`,
+              [subIds],
+              (e1) => {
+                if (e1) return fail(e1);
+                db.query(
+                  `DELETE FROM subcategorias WHERE id_subcategoria IN (?)`,
+                  [subIds],
+                  (e2) => (e2 ? fail(e2) : next())
+                );
+              }
+            );
+          };
+
+          delSubs(() => {
+            db.query(
+              `DELETE FROM etapas WHERE id_etapa IN (?)`,
+              [toDeleteEtapas],
+              (eDelE) => (eDelE ? fail(eDelE) : finishOK())
+            );
+          });
         }
-        continuar(resultInsert.insertId);
+      );
+    }
+
+    function finishOK() {
+      db.commit((e) => {
+        if (e) return fail(e);
+        return res.status(200).send("✅ Malla actualizada correctamente.");
       });
     }
   });
-  });
+});
+
 
 
   app.get("/api/malla/:plan", async (req, res) => {
@@ -2437,7 +2566,7 @@ app.get('/malla/:puesto', async (req, res) => {
 
   // SIN prefijo /api
 app.get("/categorias", (req, res) => {
-  const query = "SELECT * FROM categorias";
+  const query = "SELECT id_categoria, nombre FROM categorias ORDER BY id_categoria ASC";
 
   db.query(query, (err, results) => {
     if (err) {
