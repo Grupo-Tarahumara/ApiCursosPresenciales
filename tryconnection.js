@@ -28,7 +28,8 @@ import { updateVacaciones } from './dbMSSQL.js';
 import { datosSolicitanteHtml } from './renders.js';
 dotenv.config();
 
-import { reenviarCorreoAprobador, returnConnection} from './aprobacion.js';
+import { procesarAprobacion, reenviarCorreoAprobador} from './aprobacion.js';
+
 
 // 👇 Forma correcta de obtener __dirname en ES Modules
 const __filename = fileURLToPath(import.meta.url);
