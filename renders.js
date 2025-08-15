@@ -6,10 +6,7 @@ export function renderDatosHtml(tipo, datos) {
     case "Cambio de horario":
       return `<p><strong>Nuevo horario solicitado:</strong> ${datos.newSchedule}</p>`;
     case "Comisión fuera de Oficina":
-      return `<p><strong>Dias de home office:</strong> ${datos.homeOfficeDays}</p>
-              <p><strong>Inicio:</strong> ${datos.startDate}</p>
-              <p><strong>Fin:</strong> ${datos.endDate}</p>
-              <p><strong>Reincorporación:</strong> ${datos.resumeDate}</p>`;
+      return `<p><strong>Dias de home office:</strong> 1 </p>`;
     case "Comisión Prolongada fuera de Oficina":
       return `<p><strong>Dias de home office:</strong> ${datos.homeOfficeDays}</p>
               <p><strong>Inicio:</strong> ${datos.startDate}</p>
@@ -307,7 +304,8 @@ export function generarCorreoAprobacion(solicitante, datos) {
         ` : ""}
         ${detallesMovimiento ? `
           <div style="margin-top: 24px;">
-            <h3 style="color: #444;">📋 Detalles del movimiento:</h3>
+            <h3 style="color: #444;">📋 Detalles del movimiento: </h3>
+            <p><strong>Fecha de incidencia:</strong> ${solicitante.fecha_incidencia}</p>
             ${detallesMovimiento}
           </div>
         ` : ""}

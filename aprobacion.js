@@ -119,7 +119,7 @@ export async function procesarAprobacion(idAprobacion, estatus, nota) {
       `, [nota, movimientoId]);
 
       const [[solicitante]] = await db.query(`
-        SELECT m.num_empleado, u.email, u.name, datos_json, tipo_movimiento, nota
+        SELECT m.num_empleado, u.email, u.name, datos_json, tipo_movimiento, nota, fecha_incidencia
         FROM movimientos_personal m
         JOIN users u ON m.num_empleado = u.num_empleado
         WHERE m.idMovimiento = ?
