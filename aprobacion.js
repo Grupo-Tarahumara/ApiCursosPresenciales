@@ -1,6 +1,6 @@
 import mysql from 'mysql2/promise';
 import { enviarCorreo } from './emailService.js';
-import { generarCorreoAprobacion, generarCorreoRechazo, generarCorreoAprobador } from './renders.js';
+import { generarCorreoAprobador } from './renders.js';
 import { renderDatosHtml, datosSolicitanteHtml } from './renders.js';
 import dotenv from 'dotenv';
 import {
@@ -13,12 +13,11 @@ import {
   getSubordinadosPorAprobador,
   getAsistenciaPorCodigo
 } from './dbMSSQL.js';
-import { updateVacaciones } from './dbMSSQL.js';
 import e from 'express';
 dotenv.config();
 
 // Configuración de conexión a la base de datos MySQL
-const returnConnection = () => {
+export const returnConnection = () => {
   return mysql.createConnection({
     host: process.env.DB_HOST,
     user: process.env.DB_USER,
@@ -31,7 +30,7 @@ const returnConnection = () => {
 export async function procesarAprobacion(idAprobacion, estatus, nota) {
   let datosSolicitante = null;
   const db = await returnConnection();
- const movimientosRequisiciones = ["Sustitución", "Nueva Posición", "Aumento Plantilla"];
+  const movimientosRequisiciones = ["Sustitución", "Nueva Posición", "Aumento Plantilla"];
   try {
     await db.beginTransaction();
     console.log(`🔄 Procesando aprobación ID ${idAprobacion} con estatus ${estatus} y nota ${nota}`);
@@ -134,7 +133,7 @@ export async function procesarAprobacion(idAprobacion, estatus, nota) {
           console.error("❌ Error parseando datos_json:", e);
         }
 
-        if (solicitante.tipo_movimiento === "vacaciones") {
+        if (solicitante.tipo_movimiento === "Vacaciones") {
           const { vacaciones_acumuladas_restantes: acumuladas, vacaciones_ley_restantes: ley } = datos;
           if (typeof acumuladas === "number" && typeof ley === "number") {
             await updateVacaciones(solicitante.num_empleado, acumuladas, ley);
@@ -143,8 +142,8 @@ export async function procesarAprobacion(idAprobacion, estatus, nota) {
         }
 
         const destinatarios = movimientosRequisiciones.includes(solicitante.tipo_movimiento)
-        ? process.env.EMAIL_REQUISICIONES
-        : process.env.EMAIL_MOVIMIENTOS;
+          ? process.env.EMAIL_REQUISICIONES
+          : process.env.EMAIL_MOVIMIENTOS;
 
         console.log("📧 Enviando correo de aprobación al solicitante:", solicitante.email);
         console.log("📧 Destinatarios adicionales:", destinatarios);
@@ -166,30 +165,30 @@ export async function procesarAprobacion(idAprobacion, estatus, nota) {
     console.log("🔎 Hay pendientes, notificando siguiente aprobador...");
 
     const [[mov]] = await db.query(`
-  SELECT tipo_movimiento, datos_json, comentarios
-  FROM movimientos_personal
-  WHERE idMovimiento = ?
-`, [movimientoId]);
+      SELECT num_empleado, tipo_movimiento, datos_json, comentarios
+      FROM movimientos_personal
+      WHERE idMovimiento = ?
+    `, [movimientoId]);
 
     const tipoMovimiento = mov.tipo_movimiento || "";
     const excepcion64 = ["Nueva Posición", "Aumento Plantilla"].includes(tipoMovimiento);
 
     const [[siguiente]] = await db.query(`
-  SELECT a.id_aprobador, u.email, a.token_aprobacion, u.name
-  FROM aprobaciones_movimientos a
-  JOIN users u ON a.id_aprobador = u.num_empleado
-  WHERE a.idMovimiento = ?
-    AND a.estatus = 'pendiente'
-    ${!excepcion64 ? "AND a.id_aprobador != 64" : ""}
-    AND NOT EXISTS (
-      SELECT 1 FROM aprobaciones_movimientos ap
-      WHERE ap.idMovimiento = a.idMovimiento
-        AND ap.orden < a.orden
-        AND ap.estatus != 'aprobado'
-    )
-  ORDER BY a.orden
-  LIMIT 1
-`, [movimientoId]);
+      SELECT a.id_aprobador, u.email, a.token_aprobacion, u.name
+      FROM aprobaciones_movimientos a
+      JOIN users u ON a.id_aprobador = u.num_empleado
+      WHERE a.idMovimiento = ?
+        AND a.estatus = 'pendiente'
+        ${!excepcion64 ? "AND a.id_aprobador != 64" : ""}
+        AND NOT EXISTS (
+          SELECT 1 FROM aprobaciones_movimientos ap
+          WHERE ap.idMovimiento = a.idMovimiento
+            AND ap.orden < a.orden
+            AND ap.estatus != 'aprobado'
+        )
+      ORDER BY a.orden
+      LIMIT 1
+    `, [movimientoId]);
 
     if (!siguiente && !excepcion64) {
       // Si no hay siguiente porque era 64 y fue omitido, y no es excepción
@@ -227,8 +226,8 @@ export async function procesarAprobacion(idAprobacion, estatus, nota) {
         }
 
         const destinatarios = movimientosRequisiciones.includes(solicitante.tipo_movimiento)
-        ? process.env.EMAIL_REQUISICIONES
-        : process.env.EMAIL_MOVIMIENTOS;
+          ? process.env.EMAIL_REQUISICIONES
+          : process.env.EMAIL_MOVIMIENTOS;
 
         console.log("📧 Enviando correo de aprobación al solicitante:", solicitante.email);
         console.log("📧 Destinatarios adicionales:", destinatarios);
@@ -247,8 +246,12 @@ export async function procesarAprobacion(idAprobacion, estatus, nota) {
       return;
     }
     if (siguiente) {
-      const empleadosDb = await getJerarquiaPersonal();
-      const empleado = empleadosDb.find(e => e.Personal === mov.num_empleado.toString());
+      const empleadosDb = (await getJerarquiaPersonal()) ?? [];
+      if (!mov) throw new Error(`Movimiento ${movimientoId} no encontrado`);
+      if (mov.num_empleado == null) {
+        throw new Error(`num_empleado no presente en movimiento ${movimientoId}`);
+      }
+      const empleado = empleadosDb.find(e => String(e.Personal) === String(mov.num_empleado));
 
       if (!empleado) {
         throw new Error(`Empleado ${mov.num_empleado} no encontrado en jerarquía de empleados`);
@@ -267,7 +270,7 @@ export async function procesarAprobacion(idAprobacion, estatus, nota) {
       );
 
       const enlace = `${process.env.API_BASE_URL}/api/aprobaciones/responder?token=${siguiente.token_aprobacion}`;
-      
+
       await enviarCorreo(
         siguiente.email,
         "Nueva solicitud de movimiento de personal",

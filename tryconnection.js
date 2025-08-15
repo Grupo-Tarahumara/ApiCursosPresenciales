@@ -23,12 +23,12 @@ import {
   getAsistenciaPorCodigo,
   verificarUsuarioActivo
 } from './dbMSSQL.js';
-import { generarCorreoAprobador, renderDatosHtml } from './renders.js';
+import { generarCorreoAprobacion, generarCorreoAprobador, generarCorreoRechazo, renderDatosHtml } from './renders.js';
 import { updateVacaciones } from './dbMSSQL.js';
 import { datosSolicitanteHtml } from './renders.js';
 dotenv.config();
 
-import { procesarAprobacion, reenviarCorreoAprobador} from './aprobacion.js';
+import { reenviarCorreoAprobador, returnConnection} from './aprobacion.js';
 
 // 👇 Forma correcta de obtener __dirname en ES Modules
 const __filename = fileURLToPath(import.meta.url);
