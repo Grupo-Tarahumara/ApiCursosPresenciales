@@ -358,7 +358,7 @@ export function generarCorreoAprobador(name, tipo_movimiento, htmlExtra, datosHt
                                   </p>
 
                                   <p style="color: #555555; font-size: 16px; line-height: 1.6;">
-                                    Fecha de movimiento ${fecha_incidencia || "No especificada"}<br>
+                                    Fecha de incidencia ${fecha_incidencia || "No especificada"}<br>
                                   </p>
                                   <p style="color: #555555; font-size: 16px; line-height: 1.6;">
                                     
