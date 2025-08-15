@@ -1,6 +1,7 @@
 import mysql from 'mysql2/promise';
 import { enviarCorreo } from './emailService.js';
-import { generarCorreoAprobador } from './renders.js';
+import { generarCorreoAprobacion, generarCorreoRechazo, generarCorreoAprobador } from './renders.js';
+
 import { renderDatosHtml, datosSolicitanteHtml } from './renders.js';
 import dotenv from 'dotenv';
 import {
@@ -15,6 +16,8 @@ import {
 } from './dbMSSQL.js';
 import e from 'express';
 dotenv.config();
+import { updateVacaciones } from './dbMSSQL.js';
+
 
 // Configuración de conexión a la base de datos MySQL
 export const returnConnection = () => {
